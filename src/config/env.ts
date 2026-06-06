@@ -18,6 +18,6 @@ export const env = {
   naverClientSecret: required('NAVER_CLIENT_SECRET'),
   anthropicApiKey: required('ANTHROPIC_API_KEY'),
   /** 한 주기당 Claude classification 호출 상한 (비용/속도 제어) */
-  maxClassifyPerRun: Number(process.env.MAX_CLASSIFY_PER_RUN) || 20,
+  maxClassifyPerRun: Number(process.env.MAX_CLASSIFY_PER_RUN) || 10,
   port: Number(process.env.PORT) || 3000,
 };

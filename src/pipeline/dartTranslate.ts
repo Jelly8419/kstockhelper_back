@@ -43,7 +43,8 @@ export async function translateDisclosure(input: {
   return callClaudeJson<DartTranslateResult>({
     model: CLAUDE_MODELS.brief,
     system: DART_SYSTEM,
+    // 공시 전문 번역(english_translation)이 길어 응답이 잘리는 것을 방지 (2048→4096)
+    maxTokens: 4096,
     user,
-    maxTokens: 2048,
   });
 }
