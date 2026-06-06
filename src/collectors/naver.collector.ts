@@ -18,7 +18,7 @@ import type { NaverNewsResponse, NaverNewsItem } from '../types';
 
 const NAVER_NEWS_URL = 'https://openapi.naver.com/v1/search/news.json';
 const DEDUP_WINDOW_HOURS = 12;
-const DISPLAY_PER_KEYWORD = 30;
+const DISPLAY_PER_KEYWORD = 15;
 const SOURCE = 'NAVER';
 
 /** 검색 키워드 = 종목 한글명 */

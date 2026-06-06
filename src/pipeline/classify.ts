@@ -35,9 +35,9 @@ Return JSON only:
   "reason": "Short reason within 120 characters"
 }`;
 
-/** 게시 조건: decision=publish AND confidence>=70 AND related_stocks 1개 이상 */
+/** 게시 조건: decision=publish AND confidence>=80 AND related_stocks 1개 이상 */
 export function shouldPublish(r: ClassificationResult): boolean {
-  return r.decision === 'publish' && r.confidence >= 70 && (r.related_stocks?.length ?? 0) >= 1;
+  return r.decision === 'publish' && r.confidence >= 80 && (r.related_stocks?.length ?? 0) >= 1;
 }
 
 /** 뉴스 제목 + snippet을 분류한다. */

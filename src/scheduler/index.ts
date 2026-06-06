@@ -24,12 +24,12 @@ export function startScheduler(): void {
     timezone: 'Asia/Seoul',
   });
 
-  // 네이버 뉴스 + Claude 파이프라인: 매 10분 (Claude 호출 비용 절감)
-  cron.schedule('*/10 * * * *', () => safeRun('NAVER', () => collectNaverNews()), {
+  // 네이버 뉴스 + Claude 파이프라인: 매 20분 (Claude 호출 비용 절감)
+  cron.schedule('*/20 * * * *', () => safeRun('NAVER', () => collectNaverNews()), {
     timezone: 'Asia/Seoul',
   });
 
-  logger.info('스케줄러 시작 — DART(1분) / MARKET(1일1회 16:00) / NAVER(10분)');
+  logger.info('스케줄러 시작 — DART(1분) / MARKET(1일1회 16:00) / NAVER(20분)');
 
   // 콜드스타트: 기동 직후 1회 즉시 수집 (초기값 채우기)
   safeRun('DART', () => collectDartDisclosures());
