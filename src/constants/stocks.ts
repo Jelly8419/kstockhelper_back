@@ -17,7 +17,7 @@ export interface StockMeta {
   code: string;
   /** DART 고유번호 (8자리) */
   corpCode: string;
-  /** Yahoo Finance 심볼 */
+  /** market_data 테이블의 symbol 키 (구 Yahoo 심볼 형식 유지 — 프론트 호환) */
   yahooSymbol: string;
 }
 
@@ -58,15 +58,38 @@ export const STOCK_ID_BY_CODE: Record<string, string> = Object.fromEntries(
   STOCKS.map((s) => [s.code, s.stockId]),
 );
 
-/** 시장 지수 / 환율 (Yahoo Finance 전용, DART 수집 대상 아님) */
+/**
+ * 시장 지수 (금융위원회 지수시세정보 API).
+ * symbol: market_data 테이블 키 (기존 Yahoo 심볼 유지 — 프론트 호환)
+ * idxNm: 금융위 지수 API의 지수명(idxNm) 조회 파라미터
+ */
 export interface IndexMeta {
   name: string;
-  yahooSymbol: string;
-  type: 'index' | 'fx';
+  symbol: string;
+  /** 금융위 지수 API 조회용 지수명 */
+  idxNm: string;
+  type: 'index';
 }
 
 export const INDICES: IndexMeta[] = [
-  { name: 'KOSPI', yahooSymbol: '^KS11', type: 'index' },
-  { name: 'KOSDAQ', yahooSymbol: '^KQ11', type: 'index' },
-  { name: 'USD/KRW', yahooSymbol: 'KRW=X', type: 'fx' },
+  { name: 'KOSPI', symbol: '^KS11', idxNm: '코스피', type: 'index' },
+  { name: 'KOSDAQ', symbol: '^KQ11', idxNm: '코스닥', type: 'index' },
+];
+
+/**
+ * 환율 (한국은행 ECOS API).
+ * symbol: market_data 키 (기존 Yahoo 심볼 유지)
+ * statCode/itemCode: ECOS StatisticSearch 통계표/항목 코드
+ *   731Y001 = 일별 원화 대 주요통화 환율, 0000001 = 원/달러(매매기준율)
+ */
+export interface FxMeta {
+  name: string;
+  symbol: string;
+  statCode: string;
+  itemCode: string;
+  type: 'fx';
+}
+
+export const FX_RATES: FxMeta[] = [
+  { name: 'USD/KRW', symbol: 'KRW=X', statCode: '731Y001', itemCode: '0000001', type: 'fx' },
 ];

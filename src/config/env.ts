@@ -17,6 +17,10 @@ export const env = {
   naverClientId: required('NAVER_CLIENT_ID'),
   naverClientSecret: required('NAVER_CLIENT_SECRET'),
   anthropicApiKey: required('ANTHROPIC_API_KEY'),
+  /** 공공데이터포털 인증키 (금융위 주식/지수 시세) */
+  publicDataApiKey: required('PUBLIC_DATA_API_KEY'),
+  /** 한국은행 ECOS 인증키 (환율) */
+  bokApiKey: required('BOK_API_KEY'),
   /** 한 주기당 Claude classification 호출 상한 (비용/속도 제어) */
   maxClassifyPerRun: Number(process.env.MAX_CLASSIFY_PER_RUN) || 10,
   port: Number(process.env.PORT) || 3000,

@@ -148,3 +148,47 @@ export interface MarketDataUpsert {
   change_percent: number | null;
   updated_at: string; // ISO timestamp
 }
+
+// ===== 금융위원회 공공데이터 API (주식/지수) =====
+
+/** getStockPriceInfo / getStockMarketIndex 공통 응답 item 일부 */
+export interface PublicMarketItem {
+  basDt: string; // 기준일자 YYYYMMDD
+  clpr?: string; // 종가 (주식)
+  clpr_idx?: string; // (지수는 clpr 동일 필드명 사용)
+  vs?: string; // 전일 대비
+  fltRt?: string; // 등락률
+  srtnCd?: string; // 단축 종목코드 (주식)
+  itmsNm?: string; // 종목명 (주식)
+  idxNm?: string; // 지수명 (지수)
+}
+
+/** 공공데이터포털 표준 응답 래퍼 (resultType=json) */
+export interface PublicDataResponse<T> {
+  response: {
+    header: { resultCode: string; resultMsg: string };
+    body: {
+      numOfRows: number;
+      pageNo: number;
+      totalCount: number;
+      items: { item: T[] } | '';
+    };
+  };
+}
+
+// ===== 한국은행 ECOS API (환율) =====
+
+export interface EcosRow {
+  STAT_CODE: string;
+  ITEM_CODE1: string;
+  TIME: string; // YYYYMMDD
+  DATA_VALUE: string; // 환율 값
+}
+
+export interface EcosResponse {
+  StatisticSearch?: {
+    list_total_count: number;
+    row: EcosRow[];
+  };
+  RESULT?: { CODE: string; MESSAGE: string };
+}

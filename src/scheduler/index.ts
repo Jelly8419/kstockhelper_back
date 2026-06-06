@@ -18,8 +18,9 @@ export function startScheduler(): void {
     timezone: 'Asia/Seoul',
   });
 
-  // 주가/지수: 매 5분 (잡 내부에서 장 운영시간 체크)
-  cron.schedule('*/5 * * * *', () => safeRun('MARKET', () => collectMarketData()), {
+  // 주가/지수/환율: 장 마감 후 1일 1회 (16:00 KST)
+  // 공공 API는 일별 종가 기준이라 장중 반복 조회가 의미 없다.
+  cron.schedule('0 16 * * *', () => safeRun('MARKET', () => collectMarketData()), {
     timezone: 'Asia/Seoul',
   });
 
@@ -28,11 +29,10 @@ export function startScheduler(): void {
     timezone: 'Asia/Seoul',
   });
 
-  logger.info('스케줄러 시작 — DART(1분) / MARKET(5분) / NAVER(10분)');
+  logger.info('스케줄러 시작 — DART(1분) / MARKET(1일1회 16:00) / NAVER(10분)');
 
-  // 콜드스타트: 기동 직후 1회 즉시 수집
-  // market_data는 장 운영시간과 무관하게 강제 수집(force=true)하여 초기값을 채운다.
+  // 콜드스타트: 기동 직후 1회 즉시 수집 (초기값 채우기)
   safeRun('DART', () => collectDartDisclosures());
-  safeRun('MARKET', () => collectMarketData(true));
+  safeRun('MARKET', () => collectMarketData());
   safeRun('NAVER', () => collectNaverNews());
 }
