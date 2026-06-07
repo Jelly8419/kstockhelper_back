@@ -51,6 +51,9 @@ npm run lint
 | `ANTHROPIC_API_KEY` | Anthropic Claude API 키 |
 | `PUBLIC_DATA_API_KEY` | 공공데이터포털 인증키 (금융위 주식/지수 시세) |
 | `BOK_API_KEY` | 한국은행 ECOS 인증키 (환율) |
+| `BYBIT_AFFILIATE_API_KEY` | Bybit Affiliate API 키 (affiliate 권한) |
+| `BYBIT_AFFILIATE_API_SECRET` | Bybit Affiliate API 시크릿 |
+| `FRONTEND_URL` | CORS 허용 origin (기본 https://kstockhelper.com) |
 | `MAX_CLASSIFY_PER_RUN` | 한 주기당 Claude 분류 호출 상한 (기본 10) |
 | `PORT` | 서버 포트 (기본 8080) |
 
@@ -76,19 +79,52 @@ npm run lint
 - 환율은 등락(change/change_percent)을 제공하지 않아 `null`
 - 콜드스타트 1회 즉시 수집, `symbol` 기준 upsert(심볼당 1행)
 
-### 네이버 뉴스 + Claude 파이프라인 (10분 간격)
-- 검색 키워드: 삼성전자 / SK하이닉스 / 현대차
+### 네이버 뉴스 + Claude 파이프라인 (20분 간격)
+- 검색 키워드: 삼성전자 / SK하이닉스 / 현대차 (종목당 15건)
 - `source='NAVER'`, `external_id` = 정규화된 링크(canonical_url)
 - **URL 정규화**: utm_*, fbclid, gclid 등 추적 파라미터 제거 + 쿼리 정렬
 - **제목 정규화**: `[속보][단독][특징주][종합](종합)(2보)(상보)` 등 + HTML 태그/엔티티 제거
 - **중복 제거**(최근 12시간 + 종목 겹침 후보 비교): canonical_url 동일 / 제목 유사도 ≥85% / snippet 유사도 ≥80% → skip
 - **Claude classification**(haiku-4-5, 주기당 최대 `MAX_CLASSIFY_PER_RUN`건):
-  게시 = `decision=publish AND confidence≥70 AND related_stocks≥1`
+  게시 = `decision=publish AND confidence≥80 AND related_stocks≥1`
 - **Claude brief**(sonnet-4-6): `translated_title, summary(≤300자), key_points(≤3개)` 생성 → `status=published`
+
+### Bybit 레퍼럴 동기화 (매일 02:00 KST)
+- Bybit Affiliate API(`/v5/affiliate/aff-user-list`)로 전체 레퍼럴 유저 조회
+- 이미 `bybit_uid`가 연결된 유저가 레퍼럴 목록에 있는지 재확인 → premium 유지/재승격
+- 레퍼럴 목록에서 빠진 연동 유저는 경고 로그만(강등 정책 미정)
+- **신규 자동 승격 없음**: verify 엔드포인트가 최초 연결 트리거(아래 API 참조)
 
 ### 처리 로그
 모든 단계 결과를 `processing_logs` 테이블 + 콘솔에 기록:
 `duplicate / skipped / filtered / classification_publish / classification_skip / gpt_classification_failed / gpt_brief_failed / published / disclosure_type_unconfirmed`
+
+## API 엔드포인트
+
+### `POST /api/bybit/verify`
+프론트엔드(kstockhelper.com)에서 유저가 Bybit UID를 입력해 레퍼럴 가입을 인증.
+```
+요청: { "bybitUid": "12345678", "userId": "<users.id>" }
+응답: { "success": boolean, "message": string }
+```
+- Bybit `aff-user-list`에 해당 UID가 있으면(=우리 레퍼럴) → `users.tier='premium'`, `bybit_uid` 연결
+- 이미 다른 계정에 연동된 UID는 409, userId 없음은 404, 미가입은 success=false
+- CORS: `FRONTEND_URL` origin만 허용
+
+### `POST /api/binance/connect`
+유저가 Binance UID를 입력해 연동을 **신청**(수동 승인 방식).
+```
+요청: { "binanceUid": "12345678", "userId": "<users.id>" }
+응답: { "success": boolean, "message": string }
+```
+- Bybit와 달리 **외부 API 자동 검증 없음** — `binance_uid` 저장 + `binance_uid_status='pending'`만 설정
+- 이미 다른 계정에 연동된 UID는 409, userId 없음은 404
+- **승인은 관리자가 Supabase 대시보드에서 수동** 처리 (`binance_uid_status`를 `approved`/`rejected`로 변경)
+- `approved`로 바뀌면 **DB 트리거가 자동으로 `tier='premium'`** 설정 (아래 스키마 참조)
+- 상태머신: `not_applied → pending → approved | rejected`
+
+### `GET /health`
+liveness 체크 — `{ status: 'ok', time }`
 
 ## DB 스키마
 
@@ -148,6 +184,46 @@ create table if not exists processing_logs (
 );
 ```
 
+### `users` (기존 테이블 — Bybit 연동 컬럼 추가)
+`tier`는 이미 존재. `bybit_uid` 컬럼을 추가하고 service_role 권한을 부여한다:
+```sql
+alter table users add column if not exists bybit_uid text;
+create unique index if not exists users_bybit_uid_key on users (bybit_uid);
+
+grant select, update on public.users to service_role;
+```
+> `tier`가 enum 타입이면 `'premium'` 값이 enum에 포함돼 있어야 한다.
+> 없으면: `alter type <tier_enum> add value 'premium';`
+> verify/스케줄러는 `tier='premium'` + `bybit_uid` 만 갱신한다.
+
+### `users` — Binance 연동 컬럼 + 자동 승격 트리거
+```sql
+-- binance_uid 는 이미 추가됨. 상태 컬럼 추가:
+alter table users add column if not exists binance_uid_status text default 'not_applied';
+-- (binance_uid unique 미설정 시) create unique index if not exists users_binance_uid_key on users (binance_uid);
+
+-- binance_uid_status = 'approved' 로 바뀌면 tier 를 자동으로 premium 승격
+create or replace function fn_binance_approved_to_premium()
+returns trigger as $$
+begin
+  if new.binance_uid_status = 'approved'
+     and (old.binance_uid_status is distinct from new.binance_uid_status) then
+    new.tier := 'premium';
+  end if;
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists trg_binance_approved on users;
+create trigger trg_binance_approved
+  before update on users
+  for each row
+  execute function fn_binance_approved_to_premium();
+```
+> 동작: 관리자가 대시보드에서 `binance_uid_status`를 `approved`로 바꾸면 같은 UPDATE에서 `tier='premium'`이 자동 설정된다.
+> `rejected`/`pending`은 tier를 건드리지 않는다 (강등은 정책 미정 — 필요 시 별도 처리).
+> 상태값: `not_applied | pending | approved | rejected`
+
 ## DART corp_code 매핑
 
 DART는 종목코드가 아닌 8자리 고유번호(corp_code)를 사용한다. (DART API로 검증된 값)
@@ -164,4 +240,5 @@ DART는 종목코드가 아닌 8자리 고유번호(corp_code)를 사용한다. 
 
 - [x] Claude API 번역/요약 파이프라인 (DART 공시 번역, 뉴스 브리프)
 - [x] 뉴스 API 연동 (네이버 검색 API + Claude 분류/브리프)
-- [ ] Bybit/Binance 레퍼럴 연동
+- [x] Bybit 레퍼럴 연동 (verify 엔드포인트 + 1일 1회 동기화)
+- [x] Binance UID 연동 (connect 엔드포인트 + 수동 승인 + DB 트리거)

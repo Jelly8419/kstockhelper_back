@@ -10,6 +10,13 @@ function required(name: string): string {
   return value;
 }
 
+/** boolean 환경변수 파싱. 미설정이면 기본값. 'false'/'0'/'no'/'off'만 false로 본다. */
+function flag(name: string, defaultValue = true): boolean {
+  const v = process.env[name];
+  if (v === undefined || v === '') return defaultValue;
+  return !['false', '0', 'no', 'off'].includes(v.trim().toLowerCase());
+}
+
 export const env = {
   supabaseUrl: required('SUPABASE_URL'),
   supabaseServiceRoleKey: required('SUPABASE_SERVICE_ROLE_KEY'),
@@ -21,7 +28,18 @@ export const env = {
   publicDataApiKey: required('PUBLIC_DATA_API_KEY'),
   /** 한국은행 ECOS 인증키 (환율) */
   bokApiKey: required('BOK_API_KEY'),
+  /** Bybit Affiliate API 키/시크릿 */
+  bybitAffiliateApiKey: required('BYBIT_AFFILIATE_API_KEY'),
+  bybitAffiliateApiSecret: required('BYBIT_AFFILIATE_API_SECRET'),
+  /** 프론트엔드 URL (CORS 허용 origin) */
+  frontendUrl: process.env.FRONTEND_URL || 'https://kstockhelper.com',
   /** 한 주기당 Claude classification 호출 상한 (비용/속도 제어) */
   maxClassifyPerRun: Number(process.env.MAX_CLASSIFY_PER_RUN) || 10,
   port: Number(process.env.PORT) || 3000,
+  /**
+   * Feature flags — Claude 비용이 발생하는 수집 잡 on/off.
+   * 기본 true (운영은 영향 없음). 로컬에서 false로 두면 비용 발생 방지.
+   */
+  enableDart: flag('ENABLE_DART'),
+  enableNaver: flag('ENABLE_NAVER'),
 };
