@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { collectDartDisclosures } from '../collectors/dart.collector';
 import { collectMarketData } from '../collectors/market.collector';
 import { collectNaverNews } from '../collectors/naver.collector';
+import { syncAffiliateUsers } from '../collectors/bybitAffiliate';
 import { logger } from '../utils/logger';
 
 /** 잡 실행을 try/catch로 감싸 한 주기 실패가 스케줄을 죽이지 않게 한다. */
@@ -29,7 +30,12 @@ export function startScheduler(): void {
     timezone: 'Asia/Seoul',
   });
 
-  logger.info('스케줄러 시작 — DART(1분) / MARKET(1일1회 16:00) / NAVER(20분)');
+  // Bybit 레퍼럴 동기화: 매일 02:00 KST (연동 유저 재확인/유지)
+  cron.schedule('0 2 * * *', () => safeRun('BYBIT', () => syncAffiliateUsers()), {
+    timezone: 'Asia/Seoul',
+  });
+
+  logger.info('스케줄러 시작 — DART(1분) / MARKET(16:00) / NAVER(20분) / BYBIT(02:00)');
 
   // 콜드스타트: 기동 직후 1회 즉시 수집 (초기값 채우기)
   safeRun('DART', () => collectDartDisclosures());

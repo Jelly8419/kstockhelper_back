@@ -21,6 +21,11 @@ export const env = {
   publicDataApiKey: required('PUBLIC_DATA_API_KEY'),
   /** 한국은행 ECOS 인증키 (환율) */
   bokApiKey: required('BOK_API_KEY'),
+  /** Bybit Affiliate API 키/시크릿 */
+  bybitAffiliateApiKey: required('BYBIT_AFFILIATE_API_KEY'),
+  bybitAffiliateApiSecret: required('BYBIT_AFFILIATE_API_SECRET'),
+  /** 프론트엔드 URL (CORS 허용 origin) */
+  frontendUrl: process.env.FRONTEND_URL || 'https://kstockhelper.com',
   /** 한 주기당 Claude classification 호출 상한 (비용/속도 제어) */
   maxClassifyPerRun: Number(process.env.MAX_CLASSIFY_PER_RUN) || 10,
   port: Number(process.env.PORT) || 3000,
