@@ -56,3 +56,39 @@ export async function setTier(userId: string, tier: string): Promise<void> {
     throw error;
   }
 }
+
+// ===== Binance UID 연동 (수동 승인) =====
+
+/**
+ * Binance UID를 연결하고 상태를 pending으로 변경한다 (승인 신청).
+ * 실제 승인(approved → tier=premium)은 Supabase 대시보드 + DB 트리거가 담당.
+ * @returns 업데이트된 행 존재 여부 (해당 userId가 없으면 false)
+ */
+export async function connectBinanceUid(userId: string, binanceUid: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('users')
+    .update({ binance_uid: binanceUid, binance_uid_status: 'pending' })
+    .eq('id', userId)
+    .select('id');
+
+  if (error) {
+    logger.error('Binance UID 연결 실패:', error.message);
+    throw error;
+  }
+  return (data?.length ?? 0) > 0;
+}
+
+/** 특정 binance_uid가 이미 다른 유저에 연결돼 있는지 확인 (중복 연동 방지) */
+export async function findUserByBinanceUid(binanceUid: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('users')
+    .select('id')
+    .eq('binance_uid', binanceUid)
+    .limit(1);
+
+  if (error) {
+    logger.error('binance_uid 조회 실패:', error.message);
+    throw error;
+  }
+  return data && data.length > 0 ? String(data[0].id) : null;
+}

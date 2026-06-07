@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { env } from './config/env';
 import { bybitRouter } from './routes/bybit.routes';
+import { binanceRouter } from './routes/binance.routes';
 
 export function createApp() {
   const app = express();
@@ -22,6 +23,7 @@ export function createApp() {
   });
 
   app.use('/api/bybit', bybitRouter);
+  app.use('/api/binance', binanceRouter);
 
   return app;
 }

@@ -111,6 +111,18 @@ npm run lint
 - 이미 다른 계정에 연동된 UID는 409, userId 없음은 404, 미가입은 success=false
 - CORS: `FRONTEND_URL` origin만 허용
 
+### `POST /api/binance/connect`
+유저가 Binance UID를 입력해 연동을 **신청**(수동 승인 방식).
+```
+요청: { "binanceUid": "12345678", "userId": "<users.id>" }
+응답: { "success": boolean, "message": string }
+```
+- Bybit와 달리 **외부 API 자동 검증 없음** — `binance_uid` 저장 + `binance_uid_status='pending'`만 설정
+- 이미 다른 계정에 연동된 UID는 409, userId 없음은 404
+- **승인은 관리자가 Supabase 대시보드에서 수동** 처리 (`binance_uid_status`를 `approved`/`rejected`로 변경)
+- `approved`로 바뀌면 **DB 트리거가 자동으로 `tier='premium'`** 설정 (아래 스키마 참조)
+- 상태머신: `not_applied → pending → approved | rejected`
+
 ### `GET /health`
 liveness 체크 — `{ status: 'ok', time }`
 
@@ -184,6 +196,34 @@ grant select, update on public.users to service_role;
 > 없으면: `alter type <tier_enum> add value 'premium';`
 > verify/스케줄러는 `tier='premium'` + `bybit_uid` 만 갱신한다.
 
+### `users` — Binance 연동 컬럼 + 자동 승격 트리거
+```sql
+-- binance_uid 는 이미 추가됨. 상태 컬럼 추가:
+alter table users add column if not exists binance_uid_status text default 'not_applied';
+-- (binance_uid unique 미설정 시) create unique index if not exists users_binance_uid_key on users (binance_uid);
+
+-- binance_uid_status = 'approved' 로 바뀌면 tier 를 자동으로 premium 승격
+create or replace function fn_binance_approved_to_premium()
+returns trigger as $$
+begin
+  if new.binance_uid_status = 'approved'
+     and (old.binance_uid_status is distinct from new.binance_uid_status) then
+    new.tier := 'premium';
+  end if;
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists trg_binance_approved on users;
+create trigger trg_binance_approved
+  before update on users
+  for each row
+  execute function fn_binance_approved_to_premium();
+```
+> 동작: 관리자가 대시보드에서 `binance_uid_status`를 `approved`로 바꾸면 같은 UPDATE에서 `tier='premium'`이 자동 설정된다.
+> `rejected`/`pending`은 tier를 건드리지 않는다 (강등은 정책 미정 — 필요 시 별도 처리).
+> 상태값: `not_applied | pending | approved | rejected`
+
 ## DART corp_code 매핑
 
 DART는 종목코드가 아닌 8자리 고유번호(corp_code)를 사용한다. (DART API로 검증된 값)
@@ -201,4 +241,4 @@ DART는 종목코드가 아닌 8자리 고유번호(corp_code)를 사용한다. 
 - [x] Claude API 번역/요약 파이프라인 (DART 공시 번역, 뉴스 브리프)
 - [x] 뉴스 API 연동 (네이버 검색 API + Claude 분류/브리프)
 - [x] Bybit 레퍼럴 연동 (verify 엔드포인트 + 1일 1회 동기화)
-- [ ] Binance 레퍼럴 연동
+- [x] Binance UID 연동 (connect 엔드포인트 + 수동 승인 + DB 트리거)

@@ -221,3 +221,18 @@ export interface BybitVerifyResponse {
   success: boolean;
   message: string;
 }
+
+// ===== Binance UID 연동 (수동 승인) =====
+
+/**
+ * Binance UID 연동 상태.
+ * not_applied → pending → approved | rejected
+ * approved 전환은 Supabase 대시보드 + DB 트리거가 담당 (tier=premium 자동).
+ */
+export type BinanceUidStatus = 'not_applied' | 'pending' | 'approved' | 'rejected';
+
+/** connect 엔드포인트 응답 */
+export interface BinanceConnectResponse {
+  success: boolean;
+  message: string;
+}
