@@ -13,7 +13,7 @@ export const bybitRouter = Router();
  */
 bybitRouter.post('/verify', async (req, res) => {
   const { bybitUid, userId } = req.body ?? {};
-
+  logger.info(`Bybit verify 요청 — userId=${userId}, bybitUid=${bybitUid}`);
   // 입력 검증
   if (typeof bybitUid !== 'string' || !bybitUid.trim() || typeof userId !== 'string' || !userId.trim()) {
     return res.status(400).json({
