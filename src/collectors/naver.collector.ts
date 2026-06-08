@@ -10,7 +10,7 @@ import {
   updateNews,
   linkNewsStocks,
 } from '../services/news.service';
-import { logProcessing } from '../services/processingLog.service';
+import { logProcessing, getRecentlyClassifiedIds } from '../services/processingLog.service';
 import { checkDuplicate } from '../pipeline/dedup';
 import { classifyNews, shouldPublish } from '../pipeline/classify';
 import { generateNewsBrief } from '../pipeline/newsBrief';
@@ -95,10 +95,16 @@ export async function collectNaverNews(): Promise<void> {
   // 2) 최근 12시간 후보군 조회 (중복 비교 기준)
   const recent = await getRecentNews(DEDUP_WINDOW_HOURS);
 
+  // 2-1) 분류 결과 캐시: 최근 12시간 내 이미 classify한 external_id.
+  // classify에서 skip된 기사는 news에 저장되지 않아 dedup에 안 걸리고 매 주기 재분류된다.
+  // 이 집합으로 그 재분류(haiku 재호출)를 막는다.
+  const classifiedIds = await getRecentlyClassifiedIds(SOURCE, DEDUP_WINDOW_HOURS);
+
   // 배치 내 중복도 거르기 위한 진행 중 canonical 집합
   const seenInBatch = new Set<string>();
   let classifyBudget = env.maxClassifyPerRun;
   let publishedCount = 0;
+  let cacheSkippedCount = 0;
 
   for (const p of prepared) {
     // 배치 내 동일 URL 중복
@@ -132,6 +138,12 @@ export async function collectNaverNews(): Promise<void> {
         status: 'duplicate',
         reason: dup.reason,
       });
+      continue;
+    }
+
+    // 3-1) 분류 캐시 적중 → 최근 이미 classify한 기사. haiku 재호출 스킵 (비용 절감 핵심).
+    if (classifiedIds.has(p.canonicalUrl)) {
+      cacheSkippedCount++;
       continue;
     }
 
@@ -250,5 +262,8 @@ export async function collectNaverNews(): Promise<void> {
     }
   }
 
-  logger.info(`NAVER 수집 완료 — 게시 ${publishedCount}건 / 후보 ${prepared.length}건`);
+  logger.info(
+    `NAVER 수집 완료 — 게시 ${publishedCount}건 / 후보 ${prepared.length}건 / ` +
+      `분류캐시 스킵 ${cacheSkippedCount}건`,
+  );
 }

@@ -15,7 +15,9 @@ export async function callClaudeJson<T>(params: {
   const res = await anthropic.messages.create({
     model: params.model,
     max_tokens: params.maxTokens,
-    system: params.system,
+    // 시스템 프롬프트는 매 호출 동일 → prompt caching으로 입력 비용 절감.
+    // 캐시 TTL 5분. 같은 주기 내 연속 호출분이 캐시에 적중한다.
+    system: [{ type: 'text', text: params.system, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: params.user }],
   });
 
