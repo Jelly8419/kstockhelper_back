@@ -24,8 +24,9 @@ export function startScheduler(): void {
     logger.warn('DART 수집 비활성화됨 (ENABLE_DART=false)');
   }
 
-  // 주가/지수(KIS): 장 마감 후 1일 1회 (16:00 KST). API 비용 없음 — 항상 켬.
-  cron.schedule('0 16 * * *', () => safeRun('MARKET', () => collectMarketData()), {
+  // 주가/지수(KIS): 매 5분 실행하되, 평일 장중(09:01~15:41 KST)에만 실제 수집.
+  // 시간창 밖은 collectMarketData 내부에서 스킵 → 마지막 값 고정. API 비용 없음 — 항상 켬.
+  cron.schedule('*/5 * * * *', () => safeRun('MARKET', () => collectMarketData()), {
     timezone: 'Asia/Seoul',
   });
 
@@ -49,13 +50,14 @@ export function startScheduler(): void {
   });
 
   logger.info(
-    `스케줄러 시작 — DART(${env.enableDart ? '1분' : 'off'}) / MARKET(16:00) / FX(09:10) / ` +
+    `스케줄러 시작 — DART(${env.enableDart ? '1분' : 'off'}) / MARKET(장중 5분) / FX(09:10) / ` +
       `NAVER(${env.enableNaver ? '20분' : 'off'}) / BYBIT(02:00)`,
   );
 
   // 콜드스타트: 기동 직후 1회 즉시 수집 (초기값 채우기). 비활성 잡은 스킵.
+  // MARKET은 force=true로 시간창 무시하고 초기값을 채운다.
   if (env.enableDart) safeRun('DART', () => collectDartDisclosures());
-  safeRun('MARKET', () => collectMarketData());
+  safeRun('MARKET', () => collectMarketData(true));
   safeRun('FX', () => collectFxData());
   if (env.enableNaver) safeRun('NAVER', () => collectNaverNews());
 }

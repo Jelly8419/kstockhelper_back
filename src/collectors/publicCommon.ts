@@ -5,6 +5,40 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** KST 기준 요일(0=일~6=토)과 분 단위 시각(hour*60+min)을 반환 */
+function kstWeekdayAndMinutes(d: Date): { weekday: number; minutes: number } {
+  // en-US 'short' weekday + 24시간 시/분을 KST로 추출
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Seoul',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const weekday = dayMap[get('weekday')] ?? 0;
+  // hour12:false에서 자정이 '24'로 나오는 환경 대응
+  const hour = (Number(get('hour')) % 24) || 0;
+  const minute = Number(get('minute')) || 0;
+  return { weekday, minutes: hour * 60 + minute };
+}
+
+/** 장중 시간창: 평일(월~금) 09:01 ~ 15:41 KST */
+const MARKET_OPEN_MIN = 9 * 60 + 1; // 09:01
+const MARKET_CLOSE_MIN = 15 * 60 + 41; // 15:41
+
+/**
+ * 현재 시각이 KST 평일 장중(09:01~15:41)인지 판정한다.
+ * 이 창 밖(장 종료 후·주말)에는 주가/지수 수집을 스킵해 마지막 값을 고정한다.
+ * 공휴일은 한투가 빈 응답을 주므로 별도 처리 없이 버림 처리된다.
+ */
+export function isMarketOpen(now: Date = new Date()): boolean {
+  const { weekday, minutes } = kstWeekdayAndMinutes(now);
+  const isWeekday = weekday >= 1 && weekday <= 5;
+  return isWeekday && minutes >= MARKET_OPEN_MIN && minutes <= MARKET_CLOSE_MIN;
+}
+
 /**
  * 한투 호출 간 기본 간격(ms). 한투 실전 API는 초당 거래건수 제한(EGW00201)이 있어
  * 연속 호출 시 일부가 500으로 떨어진다. 1일 1회·총 5호출이라 지연은 무의미.
