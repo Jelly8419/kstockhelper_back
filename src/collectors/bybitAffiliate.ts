@@ -40,18 +40,32 @@ async function fetchPage(cursor: string): Promise<BybitAffUserListResult> {
   const timestamp = String(Date.now());
   const signature = sign(timestamp, queryString);
 
-  const { data } = await axios.get<BybitV5Response<BybitAffUserListResult>>(
-    `${BYBIT_BASE}${AFF_USER_LIST_PATH}?${queryString}`,
-    {
-      headers: {
-        'X-BAPI-API-KEY': env.bybitAffiliateApiKey,
-        'X-BAPI-TIMESTAMP': timestamp,
-        'X-BAPI-RECV-WINDOW': RECV_WINDOW,
-        'X-BAPI-SIGN': signature,
+  let data: BybitV5Response<BybitAffUserListResult>;
+  try {
+    const res = await axios.get<BybitV5Response<BybitAffUserListResult>>(
+      `${BYBIT_BASE}${AFF_USER_LIST_PATH}?${queryString}`,
+      {
+        headers: {
+          'X-BAPI-API-KEY': env.bybitAffiliateApiKey,
+          'X-BAPI-TIMESTAMP': timestamp,
+          'X-BAPI-RECV-WINDOW': RECV_WINDOW,
+          'X-BAPI-SIGN': signature,
+        },
+        timeout: 10_000,
       },
-      timeout: 10_000,
-    },
-  );
+    );
+    data = res.data;
+  } catch (err) {
+    // HTTP 레벨 오류(403 등) — Bybit가 본문에 담은 실제 사유를 로그로 남긴다
+    if (axios.isAxiosError(err)) {
+      const status = err.response?.status;
+      const body = err.response?.data;
+      logger.error(
+        `Bybit HTTP ${status} — body=${typeof body === 'string' ? body : JSON.stringify(body)}`,
+      );
+    }
+    throw err;
+  }
 
   if (data.retCode !== 0) {
     throw new Error(`Bybit API 오류 (retCode=${data.retCode}): ${data.retMsg}`);
