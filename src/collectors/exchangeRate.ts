@@ -1,13 +1,7 @@
 import axios from 'axios';
 import { FX_RATES } from '../constants/stocks';
 import { logger } from '../utils/logger';
-import { getStoredPrice } from '../services/market.service';
 import type { MarketDataUpsert, ErApiResponse } from '../types';
-
-/** 소수 2자리 반올림 (환율 등락 표시용) */
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
 
 /**
  * 환율 수집 — ExchangeRate-API open access 엔드포인트.
@@ -16,6 +10,7 @@ function round2(n: number): number {
  *   → { result: "success", rates: { KRW: 1551.57, ... }, time_last_update_utc }
  *
  * 한투 API는 외환 현물 환율을 제공하지 않아 이 소스를 사용한다.
+ * 등락(change/change_percent)은 노출하지 않고 값만 갱신한다(null 고정).
  */
 const ER_API_URL = 'https://open.er-api.com/v6/latest/USD';
 
@@ -54,23 +49,13 @@ export async function collectFxRates(): Promise<MarketDataUpsert[]> {
       continue;
     }
 
-    // 등락 계산: ER-API는 전일대비를 주지 않으므로 DB의 직전(전일) 저장값과 비교한다.
-    // upsert로 덮어쓰기 전에 읽으므로 현재 행 = 직전 수집값. 첫 수집이면 null.
-    const prev = await getStoredPrice(fx.symbol);
-    let change: number | null = null;
-    let changePercent: number | null = null;
-    if (prev !== null && prev !== 0) {
-      change = round2(value - prev);
-      changePercent = round2(((value - prev) / prev) * 100);
-    }
-
     rows.push({
       symbol: fx.symbol, // 기존 키 유지 (KRW=X)
       name: fx.name,
       type: 'fx',
       price: value,
-      change, // 전일(직전 저장) 대비. 첫 수집은 null
-      change_percent: changePercent,
+      change: null, // 등락 미노출 (값만 갱신)
+      change_percent: null,
       updated_at: updatedAt,
     });
   }

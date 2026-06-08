@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import { collectDartDisclosures } from '../collectors/dart.collector';
-import { collectMarketData, collectFxData } from '../collectors/market.collector';
+import { collectMarketData } from '../collectors/market.collector';
 import { collectNaverNews } from '../collectors/naver.collector';
 import { syncAffiliateUsers } from '../collectors/bybitAffiliate';
 import { env } from '../config/env';
@@ -24,14 +24,9 @@ export function startScheduler(): void {
     logger.warn('DART 수집 비활성화됨 (ENABLE_DART=false)');
   }
 
-  // 주가/지수(KIS): 매 5분 실행하되, 평일 장중(09:01~15:41 KST)에만 실제 수집.
+  // 주가/지수/환율: 매 5분 실행하되, 평일 장중(09:01~15:41 KST)에만 실제 수집.
   // 시간창 밖은 collectMarketData 내부에서 스킵 → 마지막 값 고정. API 비용 없음 — 항상 켬.
   cron.schedule('*/5 * * * *', () => safeRun('MARKET', () => collectMarketData()), {
-    timezone: 'Asia/Seoul',
-  });
-
-  // 환율(ER-API): 매일 1회 (09:10 KST). 등락은 직전 저장값 대비 → "전일 대비". 비용 없음.
-  cron.schedule('10 9 * * *', () => safeRun('FX', () => collectFxData()), {
     timezone: 'Asia/Seoul',
   });
 
@@ -50,7 +45,7 @@ export function startScheduler(): void {
   });
 
   logger.info(
-    `스케줄러 시작 — DART(${env.enableDart ? '1분' : 'off'}) / MARKET(장중 5분) / FX(09:10) / ` +
+    `스케줄러 시작 — DART(${env.enableDart ? '1분' : 'off'}) / MARKET(장중 5분) / ` +
       `NAVER(${env.enableNaver ? '20분' : 'off'}) / BYBIT(02:00)`,
   );
 
@@ -58,6 +53,5 @@ export function startScheduler(): void {
   // MARKET은 force=true로 시간창 무시하고 초기값을 채운다.
   if (env.enableDart) safeRun('DART', () => collectDartDisclosures());
   safeRun('MARKET', () => collectMarketData(true));
-  safeRun('FX', () => collectFxData());
   if (env.enableNaver) safeRun('NAVER', () => collectNaverNews());
 }

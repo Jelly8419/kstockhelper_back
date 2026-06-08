@@ -7,13 +7,13 @@ import { isMarketOpen } from './publicCommon';
 import type { MarketDataUpsert } from '../types';
 
 /**
- * 주가/지수 데이터를 한국투자증권(KIS) API에서 수집해 market_data에 저장한다.
+ * 시장 데이터(주가/지수/환율)를 수집해 market_data에 저장한다.
  *   - 종목: KIS 국내주식 현재가 (실시간)
  *   - 지수: KIS 국내업종 현재지수 (실시간)
+ *   - 환율: ExchangeRate-API USD/KRW (값만, 등락 미노출)
  *
  * 스케줄러가 평일 장중(09:01~15:41 KST) 5분마다 호출한다. 장중에만 갱신하고,
  * 장 종료 후·주말·공휴일에는 수집을 스킵해 DB의 마지막 값을 그대로 고정한다.
- * 환율은 별도 잡(collectFxData)에서 처리.
  *
  * @param force true면 시간창(장중) 검사를 건너뛰고 즉시 수집한다.
  *   콜드스타트(서버 기동 직후 초기값 채우기)에서 사용.
@@ -41,46 +41,24 @@ export async function collectMarketData(force = false): Promise<void> {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error('market_data [지수(KIS)] 소스 실패:', msg);
   }
-
-  if (rows.length === 0) {
-    logger.warn('market_data(주식/지수) 수집 결과 없음 — 갱신 생략 (마지막 값 유지)');
-    return;
-  }
-
+  // 환율(ER-API)은 다른 서버라 한투 유량제한과 무관.
   try {
-    const saved = await saveMarketData(rows);
-    logger.info(`market_data 갱신 완료 — ${saved}개 심볼 (주식/지수 KIS)`);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    logger.error('market_data 저장 실패:', msg);
-  }
-}
-
-/**
- * 환율 데이터를 ExchangeRate-API에서 수집해 market_data에 저장한다.
- * 등락(change/change_percent)은 직전 저장값 대비로 계산된다(collectFxRates 내부).
- * 스케줄러가 1일 1회(09:10 KST) 호출 → "전일 대비"가 자연스럽게 성립.
- */
-export async function collectFxData(): Promise<void> {
-  let rows: MarketDataUpsert[];
-  try {
-    rows = await collectFxRates();
+    rows.push(...(await collectFxRates()));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error('market_data [환율] 소스 실패:', msg);
-    return;
   }
 
   if (rows.length === 0) {
-    logger.warn('market_data(환율) 수집 결과 없음 — 갱신 생략 (마지막 값 유지)');
+    logger.warn('market_data 수집 결과 없음 — 갱신 생략 (마지막 값 유지)');
     return;
   }
 
   try {
     const saved = await saveMarketData(rows);
-    logger.info(`market_data 갱신 완료 — ${saved}개 심볼 (환율 ER-API)`);
+    logger.info(`market_data 갱신 완료 — ${saved}개 심볼 (주식/지수 KIS, 환율 ER-API)`);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.error('market_data(환율) 저장 실패:', msg);
+    logger.error('market_data 저장 실패:', msg);
   }
 }
