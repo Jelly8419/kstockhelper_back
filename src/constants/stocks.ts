@@ -59,37 +59,36 @@ export const STOCK_ID_BY_CODE: Record<string, string> = Object.fromEntries(
 );
 
 /**
- * 시장 지수 (금융위원회 지수시세정보 API).
+ * 시장 지수 (한국투자증권 KIS 국내업종 현재지수 API).
  * symbol: market_data 테이블 키 (기존 Yahoo 심볼 유지 — 프론트 호환)
- * idxNm: 금융위 지수 API의 지수명(idxNm) 조회 파라미터
+ * kisCode: KIS inquire-index-price 의 fid_input_iscd 업종코드 (코스피 0001 / 코스닥 1001)
  */
 export interface IndexMeta {
   name: string;
   symbol: string;
-  /** 금융위 지수 API 조회용 지수명 */
-  idxNm: string;
+  /** KIS 업종코드 (fid_input_iscd) */
+  kisCode: string;
   type: 'index';
 }
 
 export const INDICES: IndexMeta[] = [
-  { name: 'KOSPI', symbol: '^KS11', idxNm: '코스피', type: 'index' },
-  { name: 'KOSDAQ', symbol: '^KQ11', idxNm: '코스닥', type: 'index' },
+  { name: 'KOSPI', symbol: '^KS11', kisCode: '0001', type: 'index' },
+  { name: 'KOSDAQ', symbol: '^KQ11', kisCode: '1001', type: 'index' },
 ];
 
 /**
- * 환율 (한국은행 ECOS API).
+ * 환율 (ExchangeRate-API, USD 기준 latest).
  * symbol: market_data 키 (기존 Yahoo 심볼 유지)
- * statCode/itemCode: ECOS StatisticSearch 통계표/항목 코드
- *   731Y001 = 일별 원화 대 주요통화 환율, 0000001 = 원/달러(매매기준율)
+ * currency: ER-API 응답 rates 객체의 통화 코드 (USD→KRW 환율이므로 KRW)
  */
 export interface FxMeta {
   name: string;
   symbol: string;
-  statCode: string;
-  itemCode: string;
+  /** ER-API rates 객체의 통화 코드 */
+  currency: string;
   type: 'fx';
 }
 
 export const FX_RATES: FxMeta[] = [
-  { name: 'USD/KRW', symbol: 'KRW=X', statCode: '731Y001', itemCode: '0000001', type: 'fx' },
+  { name: 'USD/KRW', symbol: 'KRW=X', currency: 'KRW', type: 'fx' },
 ];

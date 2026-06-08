@@ -9,7 +9,7 @@ DART 공시 수집(1분), 시장 데이터 수집(공공 API, 1일 1회), 네이
 - Supabase (`service_role` 키, 서버 전용)
 - node-cron (인메모리 스케줄러)
 - DART OpenAPI (공시) + document.xml (공시 원문)
-- 금융위원회 공공데이터 API (주식/지수 시세) + 한국은행 ECOS (환율)
+- 한국투자증권 KIS OpenAPI (주식/지수 현재가) + ExchangeRate-API (환율)
 - 네이버 검색 API (뉴스)
 - Anthropic Claude (분류: haiku-4-5 / 번역·요약: sonnet-4-6)
 
@@ -19,7 +19,7 @@ DART 공시 수집(1분), 시장 데이터 수집(공공 API, 1일 1회), 네이
 src/
 ├── config/        env 검증, Supabase / Anthropic 클라이언트
 ├── constants/     종목·지수·환율 메타, 게시 대상 공시 유형
-├── collectors/    DART / 시장데이터(publicStock·publicIndex·bokFx) / Naver
+├── collectors/    DART / 시장데이터(kisStock·kisIndex·exchangeRate) / Naver
 ├── pipeline/      Claude 분류·브리프·DART번역 + 중복제거(dedup)
 ├── services/      Supabase 저장 (news / market_data / processing_logs)
 ├── scheduler/     node-cron 잡 등록
@@ -49,8 +49,8 @@ npm run lint
 | `NAVER_CLIENT_ID` | 네이버 검색 API client id |
 | `NAVER_CLIENT_SECRET` | 네이버 검색 API client secret |
 | `ANTHROPIC_API_KEY` | Anthropic Claude API 키 |
-| `PUBLIC_DATA_API_KEY` | 공공데이터포털 인증키 (금융위 주식/지수 시세) |
-| `BOK_API_KEY` | 한국은행 ECOS 인증키 (환율) |
+| `KIS_APP_KEY` | 한국투자증권 KIS OpenAPI 앱키 (주식/지수 현재가, 실전계좌) |
+| `KIS_APP_SECRET` | 한국투자증권 KIS OpenAPI 앱시크릿 |
 | `BYBIT_AFFILIATE_API_KEY` | Bybit Affiliate API 키 (affiliate 권한) |
 | `BYBIT_AFFILIATE_API_SECRET` | Bybit Affiliate API 시크릿 |
 | `FRONTEND_URL` | CORS 허용 origin (기본 https://kstockhelper.com) |
@@ -69,13 +69,14 @@ npm run lint
   3. 대상 외 유형은 `disclosure_type_unconfirmed` 로그 후 수집만 유지
 - 게시 대상 유형은 `src/constants/disclosureTypes.ts` 참조
 
-### 시장 데이터 (공공 API, 장 마감 후 1일 1회 — 16:00 KST)
-- **종목** (금융위원회 주식시세정보): 005930 / 000660 / 005380
-- **지수** (금융위원회 지수시세정보): 코스피 / 코스닥
-- **환율** (한국은행 ECOS): USD/KRW (731Y001)
-- 모두 **일별 종가 기준**(장중 실시간 아님) → 1일 1회 갱신으로 충분
+### 시장 데이터 (장 마감 후 1일 1회 — 16:00 KST)
+- **종목** (한국투자증권 KIS 현재가): 005930 / 000660 / 005380
+- **지수** (한국투자증권 KIS 업종 현재지수): 코스피(0001) / 코스닥(1001)
+- **환율** (ExchangeRate-API, 키 불필요): USD/KRW
+- 주가/지수는 **현재가 기준**(장중 실시간). 16:00 KST 호출이라 사실상 마감가 근처 값
+- KIS는 OAuth 토큰(24h)을 메모리+파일 캐싱해 재사용 (`src/config/kisAuth.ts`)
+- 한투 유량제한(EGW00201)은 호출 간격 + 재시도(`withRetry`)로 흡수
 - `symbol` 키는 기존 형식 유지 (005930.KS / ^KS11 / KRW=X) — 프론트 호환
-- 3개 소스 병렬 호출, 한 소스 실패가 전체를 막지 않음(`Promise.allSettled`)
 - 환율은 등락(change/change_percent)을 제공하지 않아 `null`
 - 콜드스타트 1회 즉시 수집, `symbol` 기준 upsert(심볼당 1행)
 

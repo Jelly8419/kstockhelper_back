@@ -24,10 +24,9 @@ export const env = {
   naverClientId: required('NAVER_CLIENT_ID'),
   naverClientSecret: required('NAVER_CLIENT_SECRET'),
   anthropicApiKey: required('ANTHROPIC_API_KEY'),
-  /** 공공데이터포털 인증키 (금융위 주식/지수 시세) */
-  publicDataApiKey: required('PUBLIC_DATA_API_KEY'),
-  /** 한국은행 ECOS 인증키 (환율) */
-  bokApiKey: required('BOK_API_KEY'),
+  /** 한국투자증권(KIS) OpenAPI 앱키/시크릿 (주식/지수 현재가 시세) */
+  kisAppKey: required('KIS_APP_KEY'),
+  kisAppSecret: required('KIS_APP_SECRET'),
   /** Bybit Affiliate API 키/시크릿 */
   bybitAffiliateApiKey: required('BYBIT_AFFILIATE_API_KEY'),
   bybitAffiliateApiSecret: required('BYBIT_AFFILIATE_API_SECRET'),

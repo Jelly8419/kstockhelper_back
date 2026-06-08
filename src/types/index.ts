@@ -149,48 +149,42 @@ export interface MarketDataUpsert {
   updated_at: string; // ISO timestamp
 }
 
-// ===== 금융위원회 공공데이터 API (주식/지수) =====
+// ===== 한국투자증권(KIS) OpenAPI (주식/지수 현재가) =====
 
-/** getStockPriceInfo / getStockMarketIndex 공통 응답 item 일부 */
-export interface PublicMarketItem {
-  basDt: string; // 기준일자 YYYYMMDD
-  clpr?: string; // 종가 (주식)
-  clpr_idx?: string; // (지수는 clpr 동일 필드명 사용)
-  vs?: string; // 전일 대비
-  fltRt?: string; // 등락률
-  srtnCd?: string; // 단축 종목코드 (주식)
-  itmsNm?: string; // 종목명 (주식)
-  idxNm?: string; // 지수명 (지수)
-}
-
-/** 공공데이터포털 표준 응답 래퍼 (resultType=json) */
-export interface PublicDataResponse<T> {
-  response: {
-    header: { resultCode: string; resultMsg: string };
-    body: {
-      numOfRows: number;
-      pageNo: number;
-      totalCount: number;
-      items: { item: T[] } | '';
-    };
+/** 국내주식 현재가 시세 응답 (inquire-price, TR FHKST01010100) */
+export interface KisStockPriceResponse {
+  rt_cd: string; // 0 정상
+  msg_cd: string;
+  msg1: string;
+  output?: {
+    stck_prpr: string; // 주식 현재가
+    prdy_vrss: string; // 전일 대비
+    prdy_vrss_sign: string; // 전일 대비 부호 (1상한 2상승 3보합 4하한 5하락)
+    prdy_ctrt: string; // 전일 대비율
   };
 }
 
-// ===== 한국은행 ECOS API (환율) =====
-
-export interface EcosRow {
-  STAT_CODE: string;
-  ITEM_CODE1: string;
-  TIME: string; // YYYYMMDD
-  DATA_VALUE: string; // 환율 값
+/** 국내업종 현재지수 응답 (inquire-index-price, TR FHPUP02100000) */
+export interface KisIndexPriceResponse {
+  rt_cd: string; // 0 정상
+  msg_cd: string;
+  msg1: string;
+  output?: {
+    bstp_nmix_prpr: string; // 업종 지수 현재가
+    bstp_nmix_prdy_vrss: string; // 업종 지수 전일 대비
+    prdy_vrss_sign: string; // 전일 대비 부호
+    bstp_nmix_prdy_ctrt: string; // 업종 지수 전일 대비율
+  };
 }
 
-export interface EcosResponse {
-  StatisticSearch?: {
-    list_total_count: number;
-    row: EcosRow[];
-  };
-  RESULT?: { CODE: string; MESSAGE: string };
+// ===== ExchangeRate-API (환율) =====
+
+/** open.er-api.com/v6/latest/{base} 응답 */
+export interface ErApiResponse {
+  result: string; // "success" | "error"
+  base_code?: string;
+  time_last_update_utc?: string; // RFC1123
+  rates?: Record<string, number>; // 통화코드 → 환율 (base 기준)
 }
 
 // ===== Bybit Affiliate API (V5) =====
