@@ -53,6 +53,8 @@ npm run lint
 | `KIS_APP_SECRET` | 한국투자증권 KIS OpenAPI 앱시크릿 |
 | `BYBIT_AFFILIATE_API_KEY` | Bybit Affiliate API 키 (affiliate 권한) |
 | `BYBIT_AFFILIATE_API_SECRET` | Bybit Affiliate API 시크릿 |
+| `JWT_SECRET` | 관리자 페이지 JWT 서명 시크릿 (필수, 랜덤 문자열) |
+| `ADMIN_TOKEN_TTL` | 관리자 토큰 만료 (선택, 기본 8h) |
 | `FRONTEND_URL` | CORS 허용 origin (기본 https://kstockhelper.com) |
 | `MAX_CLASSIFY_PER_RUN` | 한 주기당 Claude 분류 호출 상한 (기본 10) |
 | `PORT` | 서버 포트 (기본 8080) |
@@ -109,7 +111,8 @@ npm run lint
 요청: { "bybitUid": "12345678", "userId": "<users.id>" }
 응답: { "success": boolean, "message": string }
 ```
-- Bybit `aff-user-list`에 해당 UID가 있으면(=우리 레퍼럴) → `users.tier='premium'`, `bybit_uid` 연결
+- Bybit `aff-user-list`에 해당 UID가 있으면(=우리 레퍼럴) → `users.tier='premium'`, `bybit_uid` 연결, `bybit_uid_status='approved'`
+- 활동 로그(`activity_logs`)에 `UID_APPROVED`(BYBIT) + `PREMIUM_AUTO_APPROVED` 기록
 - 이미 다른 계정에 연동된 UID는 409, userId 없음은 404, 미가입은 success=false
 - CORS: `FRONTEND_URL` origin만 허용
 
@@ -120,13 +123,62 @@ npm run lint
 응답: { "success": boolean, "message": string }
 ```
 - Bybit와 달리 **외부 API 자동 검증 없음** — `binance_uid` 저장 + `binance_uid_status='pending'`만 설정
+- 활동 로그(`activity_logs`)에 `UID_APPLIED`(BINANCE) 기록
 - 이미 다른 계정에 연동된 UID는 409, userId 없음은 404
 - **승인은 관리자가 Supabase 대시보드에서 수동** 처리 (`binance_uid_status`를 `approved`/`rejected`로 변경)
-- `approved`로 바뀌면 **DB 트리거가 자동으로 `tier='premium'`** 설정 (아래 스키마 참조)
+- `approved`로 바뀌면 **DB 트리거가 자동으로 `tier='premium'`** 설정 + `activity_logs`에 `UID_APPROVED`/`TIER_CHANGED` 자동 기록 (아래 스키마 참조)
 - 상태머신: `not_applied → pending → approved | rejected`
 
 ### `GET /health`
 liveness 체크 — `{ status: 'ok', time }`
+
+## 관리자 페이지 API (`/internal/admin`)
+
+일반 유저 인증과 **분리된 자체 JWT**(`JWT_SECRET` 서명). 관리자 계정은 DB에서 수동 생성한다.
+
+### 관리자 계정 생성 (CLI)
+```bash
+npx tsx scripts/createAdmin.ts <adminId> <password>   # 비번 최소 8자, 기존 adminId면 비번 갱신
+```
+
+### `POST /internal/admin/auth/login`
+```
+요청: { "adminId": "admin", "password": "..." }
+응답: { "accessToken": "<JWT>" }   # 실패 시 401 { success:false, message }
+```
+- 토큰 만료: `ADMIN_TOKEN_TTL`(기본 8h). 이하 모든 엔드포인트는 `Authorization: Bearer <token>` 필요 (무효/만료 시 401)
+
+### `GET /internal/admin/users`
+회원 리스트(가입일 최신순, 탈퇴 회원 포함).
+```
+응답: { "users": [{ userId, email, membershipTier, approvedExchanges, createdAt, status }] }
+```
+- `membershipTier`: `GENERAL | PREMIUM` (DB `tier` free/premium 매핑)
+- `approvedExchanges`: **approved 상태인 거래소만** 배열로 (예: `["BINANCE","BYBIT"]`). pending/rejected 제외
+- `status`: `active | inactive`(탈퇴)
+
+### `GET /internal/admin/users/:userId`
+회원 상세. 미존재 시 404.
+```
+응답: { userId, email, createdAt, membershipTier, status,
+        exchangeUids: [{ exchange, uid, status }],   // BINANCE/BYBIT 각각, status=not_applied|pending|approved|rejected
+        activityLogs: [{ type, exchange, uid, fromTier, toTier, createdAt }],  // 최신순
+        adminMemo }
+```
+
+### `PATCH /internal/admin/users/:userId/membership-tier`
+```
+요청: { "membershipTier": "GENERAL" | "PREMIUM" }
+```
+- 등급만 변경, **UID 상태는 건드리지 않음**. 실제 변경 시 `activity_logs`에 `TIER_CHANGED` 기록
+- 동일 등급이면 변경 없이 200(`이미 동일한 등급입니다.`) — 멱등. 잘못된 값은 400, 미존재 404
+
+### `PATCH /internal/admin/users/:userId/memo`
+```
+요청: { "memo": "..." }   # 최대 1,000자(초과 시 400). 회원별 1건, 수정 이력 미보관
+```
+
+> 활동 로그는 `select, insert` 권한만 부여(삭제 권한 없음) → "로그 삭제 불가"(PRD) DB 레벨 보장.
 
 ## DB 스키마
 
@@ -226,6 +278,66 @@ create trigger trg_binance_approved
 > `rejected`/`pending`은 tier를 건드리지 않는다 (강등은 정책 미정 — 필요 시 별도 처리).
 > 상태값: `not_applied | pending | approved | rejected`
 
+### 관리자 페이지 (신규 — 아래 SQL을 Supabase에서 실행)
+```sql
+-- 1) users: 회원 상태 + Bybit UID 상태 + 관리자 메모 컬럼
+alter table users add column if not exists status text not null default 'active';            -- active | inactive
+alter table users add column if not exists bybit_uid_status text not null default 'not_applied'; -- not_applied|pending|approved|rejected
+alter table users add column if not exists admin_memo text;                                   -- 최대 1000자(서비스 레이어 검증)
+
+-- 2) admins: 관리자 계정 (수동 생성, bcrypt 비번)
+create table if not exists admins (
+  id uuid primary key default gen_random_uuid(),
+  admin_id text unique not null,
+  password_hash text not null,
+  created_at timestamptz default now()
+);
+grant select, insert, update on public.admins to service_role;   -- delete 미부여(의도)
+alter table public.admins disable row level security;
+
+-- 3) activity_logs: 통합 활동 로그 (삭제 불가 운영)
+create table if not exists activity_logs (
+  id bigint generated always as identity primary key,
+  user_id uuid not null references users(id),
+  type text not null,        -- UID_APPLIED|UID_APPROVED|UID_REJECTED|UID_CHANGE_REQUESTED|TIER_CHANGED|PREMIUM_AUTO_APPROVED|ADMIN_MANUAL_CHANGE
+  exchange text,             -- BINANCE | BYBIT (해당 시)
+  uid text,
+  from_tier text,            -- 등급 변경 시
+  to_tier text,
+  created_at timestamptz default now()
+);
+create index if not exists activity_logs_user_id_idx on activity_logs (user_id, created_at desc);
+grant select, insert on public.activity_logs to service_role;     -- delete 미부여 → "로그 삭제 불가" DB 보장
+grant usage, select on all sequences in schema public to service_role;
+alter table public.activity_logs disable row level security;
+
+-- 4) Binance 승인 시 activity_logs 자동 기록 트리거 (AFTER UPDATE)
+--    대시보드에서 binance_uid_status='approved'로 바뀌면 서버를 안 거쳐도 로그가 남는다.
+create or replace function fn_binance_approved_log()
+returns trigger as $$
+begin
+  if new.binance_uid_status = 'approved'
+     and (old.binance_uid_status is distinct from new.binance_uid_status) then
+    insert into activity_logs (user_id, type, exchange, uid, created_at)
+    values (new.id, 'UID_APPROVED', 'BINANCE', new.binance_uid, now());
+    if old.tier is distinct from new.tier then
+      insert into activity_logs (user_id, type, from_tier, to_tier, created_at)
+      values (new.id, 'TIER_CHANGED', old.tier, new.tier, now());
+    end if;
+  end if;
+  return null;
+end;
+$$ language plpgsql;
+
+drop trigger if exists trg_binance_approved_log on users;
+create trigger trg_binance_approved_log
+  after update on users
+  for each row
+  execute function fn_binance_approved_log();
+```
+> 등급 매핑: DB `tier`(free/premium) ↔ API `membershipTier`(GENERAL/PREMIUM)는 서비스 레이어에서 변환.
+> 활동 로그는 지금부터 누적 — 기존 회원의 과거 신청/승인 이력은 비어 있다(소급 없음).
+
 ## DART corp_code 매핑
 
 DART는 종목코드가 아닌 8자리 고유번호(corp_code)를 사용한다. (DART API로 검증된 값)
@@ -244,3 +356,4 @@ DART는 종목코드가 아닌 8자리 고유번호(corp_code)를 사용한다. 
 - [x] 뉴스 API 연동 (네이버 검색 API + Claude 분류/브리프)
 - [x] Bybit 레퍼럴 연동 (verify 엔드포인트 + 1일 1회 동기화)
 - [x] Binance UID 연동 (connect 엔드포인트 + 수동 승인 + DB 트리거)
+- [x] 관리자 페이지 API (로그인/회원리스트/상세/등급변경/메모 + 통합 활동 로그)

@@ -5,6 +5,7 @@ import { env } from './config/env';
 import { logger } from './utils/logger';
 import { bybitRouter } from './routes/bybit.routes';
 import { binanceRouter } from './routes/binance.routes';
+import { adminRouter } from './routes/admin.routes';
 
 export function createApp() {
   const app = express();
@@ -20,8 +21,8 @@ export function createApp() {
       logger.warn(`CORS 거부 — origin=${origin} (허용=${env.frontendUrl})`);
       return callback(null, false);
     },
-    methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type'],
+    methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   };
 
   app.use(cors(corsOptions));
@@ -35,6 +36,7 @@ export function createApp() {
 
   app.use('/api/bybit', bybitRouter);
   app.use('/api/binance', binanceRouter);
+  app.use('/internal/admin', adminRouter);
 
   return app;
 }

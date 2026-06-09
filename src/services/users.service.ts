@@ -8,7 +8,8 @@ import { logger } from '../utils/logger';
 export async function upgradeToPremium(userId: string, bybitUid: string): Promise<boolean> {
   const { data, error } = await supabase
     .from('users')
-    .update({ tier: 'premium', bybit_uid: bybitUid })
+    // Bybit는 레퍼럴 자동 검증이라 연결 즉시 approved (PRD 4종 상태 반영)
+    .update({ tier: 'premium', bybit_uid: bybitUid, bybit_uid_status: 'approved' })
     .eq('id', userId)
     .select('id');
 

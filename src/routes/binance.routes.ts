@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { connectBinanceUid, findUserByBinanceUid } from '../services/users.service';
+import { appendActivityLog } from '../services/admin.service';
 import { logger } from '../utils/logger';
 import type { BinanceConnectResponse } from '../types';
 
@@ -45,6 +46,18 @@ binanceRouter.post('/connect', async (req, res) => {
         success: false,
         message: '해당 userId를 찾을 수 없습니다.',
       } satisfies BinanceConnectResponse);
+    }
+
+    // 활동 로그: UID 신청 (실패해도 신청 자체는 성공 처리)
+    try {
+      await appendActivityLog({
+        user_id: userId,
+        type: 'UID_APPLIED',
+        exchange: 'BINANCE',
+        uid: binanceUid,
+      });
+    } catch {
+      logger.warn(`Binance UID_APPLIED 로그 기록 실패 — userId=${userId}`);
     }
 
     logger.info(`Binance connect — userId=${userId}, binanceUid=${binanceUid} → pending`);

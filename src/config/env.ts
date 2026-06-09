@@ -30,6 +30,10 @@ export const env = {
   /** Bybit Affiliate API 키/시크릿 */
   bybitAffiliateApiKey: required('BYBIT_AFFILIATE_API_KEY'),
   bybitAffiliateApiSecret: required('BYBIT_AFFILIATE_API_SECRET'),
+  /** 관리자 페이지 JWT 서명 시크릿 (일반 유저 인증과 분리) */
+  jwtSecret: required('JWT_SECRET'),
+  /** 관리자 토큰 만료 (jsonwebtoken expiresIn 형식). 기본 8h */
+  adminTokenTtl: process.env.ADMIN_TOKEN_TTL || '8h',
   /** 프론트엔드 URL (CORS 허용 origin) */
   frontendUrl: process.env.FRONTEND_URL || 'https://kstockhelper.com',
   /** 한 주기당 Claude classification 호출 상한 (비용/속도 제어) */

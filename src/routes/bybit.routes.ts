@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { findAffiliateUser } from '../collectors/bybitAffiliate';
 import { upgradeToPremium, findUserByBybitUid } from '../services/users.service';
+import { appendActivityLog } from '../services/admin.service';
 import { logger } from '../utils/logger';
 import type { BybitVerifyResponse } from '../types';
 
@@ -48,6 +49,25 @@ bybitRouter.post('/verify', async (req, res) => {
         success: false,
         message: '해당 userId를 찾을 수 없습니다.',
       } satisfies BybitVerifyResponse);
+    }
+
+    // 활동 로그: UID 승인 + 프리미엄 자동 승인 (실패해도 승격 자체는 성공 처리)
+    try {
+      await appendActivityLog({
+        user_id: userId,
+        type: 'UID_APPROVED',
+        exchange: 'BYBIT',
+        uid: bybitUid,
+      });
+      await appendActivityLog({
+        user_id: userId,
+        type: 'PREMIUM_AUTO_APPROVED',
+        exchange: 'BYBIT',
+        uid: bybitUid,
+        to_tier: 'premium',
+      });
+    } catch {
+      logger.warn(`Bybit 활동 로그 기록 실패 — userId=${userId}`);
     }
 
     logger.info(`Bybit verify 성공 — userId=${userId}, bybitUid=${bybitUid} → premium`);

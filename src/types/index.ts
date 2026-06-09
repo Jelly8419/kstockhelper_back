@@ -230,3 +230,114 @@ export interface BinanceConnectResponse {
   success: boolean;
   message: string;
 }
+
+// ===== 관리자 페이지 =====
+
+/** API 표면의 회원등급 (DB tier: free/premium ↔ API: GENERAL/PREMIUM) */
+export type ApiTier = 'GENERAL' | 'PREMIUM';
+
+/** 회원 상태 (DB users.status). 활성 / 비활성(탈퇴) */
+export type UserStatus = 'active' | 'inactive';
+
+/** 거래소 UID 상태 (Binance/Bybit 공통, PRD 4종) */
+export type UidStatus = 'not_applied' | 'pending' | 'approved' | 'rejected';
+
+/** 거래소 식별자 */
+export type Exchange = 'BINANCE' | 'BYBIT';
+
+/**
+ * 활동 로그 이벤트 타입 (activity_logs.type).
+ * PRD 4.8 로그 기록 대상에 대응.
+ */
+export type ActivityLogType =
+  | 'UID_APPLIED' // UID 신청
+  | 'UID_APPROVED' // UID 승인
+  | 'UID_REJECTED' // UID 거절
+  | 'UID_CHANGE_REQUESTED' // UID 변경 신청
+  | 'TIER_CHANGED' // 회원등급 변경
+  | 'PREMIUM_AUTO_APPROVED' // 프리미엄 자동 승인
+  | 'ADMIN_MANUAL_CHANGE'; // 관리자 수동 변경
+
+/** activity_logs INSERT 페이로드 */
+export interface ActivityLogInsert {
+  user_id: string;
+  type: ActivityLogType;
+  exchange?: Exchange | null;
+  uid?: string | null;
+  from_tier?: string | null;
+  to_tier?: string | null;
+}
+
+/** activity_logs 조회 행 (DB 컬럼 그대로) */
+export interface ActivityLogRow {
+  id: number;
+  user_id: string;
+  type: ActivityLogType;
+  exchange: Exchange | null;
+  uid: string | null;
+  from_tier: string | null;
+  to_tier: string | null;
+  created_at: string;
+}
+
+/** 회원 리스트 아이템 (GET /internal/admin/users) */
+export interface AdminUserListItem {
+  userId: string;
+  email: string;
+  membershipTier: ApiTier;
+  /** 승인된(approved) 거래소만. 예: ['BINANCE', 'BYBIT'] */
+  approvedExchanges: Exchange[];
+  createdAt: string;
+  status: UserStatus;
+}
+
+/** 회원 상세의 거래소 UID 상태 */
+export interface AdminExchangeUid {
+  exchange: Exchange;
+  uid: string | null;
+  status: UidStatus;
+}
+
+/** 회원 상세 (GET /internal/admin/users/{userId}) */
+export interface AdminUserDetail {
+  userId: string;
+  email: string;
+  createdAt: string;
+  membershipTier: ApiTier;
+  status: UserStatus;
+  exchangeUids: AdminExchangeUid[];
+  activityLogs: AdminActivityLog[];
+  adminMemo: string | null;
+}
+
+/** 활동 로그 응답 DTO (최신순) */
+export interface AdminActivityLog {
+  type: ActivityLogType;
+  exchange?: Exchange | null;
+  uid?: string | null;
+  fromTier?: ApiTier | null;
+  toTier?: ApiTier | null;
+  createdAt: string;
+}
+
+// ===== 관리자 API 응답 래퍼 =====
+
+export interface AdminLoginResponse {
+  accessToken: string;
+}
+
+export interface AdminUserListResponse {
+  users: AdminUserListItem[];
+}
+
+/** PATCH 결과 등 단순 응답 */
+export interface AdminSimpleResponse {
+  success: boolean;
+  message: string;
+}
+
+/** JWT payload (관리자 토큰) */
+export interface AdminJwtPayload {
+  sub: string; // admins.id
+  adminId: string; // admins.admin_id
+}
