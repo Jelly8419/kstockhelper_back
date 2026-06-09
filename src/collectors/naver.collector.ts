@@ -12,12 +12,13 @@ import {
 } from '../services/news.service';
 import { logProcessing, getRecentlyClassifiedIds } from '../services/processingLog.service';
 import { checkDuplicate } from '../pipeline/dedup';
+import { checkDuplicateAi } from '../pipeline/dedupAi';
 import { classifyNews, shouldPublish } from '../pipeline/classify';
 import { generateNewsBrief } from '../pipeline/newsBrief';
 import type { NaverNewsResponse, NaverNewsItem } from '../types';
 
 const NAVER_NEWS_URL = 'https://openapi.naver.com/v1/search/news.json';
-const DEDUP_WINDOW_HOURS = 12;
+const DEDUP_WINDOW_HOURS = 48;
 const DISPLAY_PER_KEYWORD = 15;
 const SOURCE = 'NAVER';
 
@@ -92,10 +93,10 @@ export async function collectNaverNews(): Promise<void> {
     return;
   }
 
-  // 2) 최근 12시간 후보군 조회 (중복 비교 기준)
+  // 2) 최근 N시간 후보군 조회 (중복 비교 기준, DEDUP_WINDOW_HOURS)
   const recent = await getRecentNews(DEDUP_WINDOW_HOURS);
 
-  // 2-1) 분류 결과 캐시: 최근 12시간 내 이미 classify한 external_id.
+  // 2-1) 분류 결과 캐시: 최근 N시간 내 이미 classify한 external_id.
   // classify에서 skip된 기사는 news에 저장되지 않아 dedup에 안 걸리고 매 주기 재분류된다.
   // 이 집합으로 그 재분류(haiku 재호출)를 막는다.
   const classifiedIds = await getRecentlyClassifiedIds(SOURCE, DEDUP_WINDOW_HOURS);
@@ -194,6 +195,28 @@ export async function collectNaverNews(): Promise<void> {
       status: 'classification_publish',
       reason: `${classification.category} conf${classification.confidence}`,
     });
+
+    // 5-1) 2차 내용 기반 중복 판정 (haiku)
+    // classify로 종목이 확정됐으므로, 같은 종목 + 유사도 애매구간 후보만 AI로 비교한다.
+    // 명백한 중복은 위 1차 문자열 dedup에서, 명백한 신규는 여기서 AI 호출 없이 통과한다.
+    const aiDup = await checkDuplicateAi(
+      {
+        title: p.normalizedTitle,
+        body: p.description,
+        relatedStocks: classification.related_stocks,
+      },
+      recent,
+    );
+    if (aiDup.isDuplicate) {
+      await logProcessing({
+        source: SOURCE,
+        external_id: p.externalId,
+        stage: 'dedup',
+        status: 'duplicate',
+        reason: aiDup.reason ?? 'AI 내용 중복',
+      });
+      continue;
+    }
 
     // 6) 게시 대상 → news insert (신규일 때만)
     const stockIds = classification.related_stocks

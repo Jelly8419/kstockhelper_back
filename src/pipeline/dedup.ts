@@ -26,7 +26,7 @@ function stocksOverlap(a: string[], b: string[] | null): boolean {
 }
 
 /**
- * 후보 뉴스가 최근 12시간 내 관련 종목이 겹치는 기존 뉴스와 중복인지 판정한다.
+ * 후보 뉴스가 최근 N시간(호출 측 DEDUP_WINDOW_HOURS) 내 관련 종목이 겹치는 기존 뉴스와 중복인지 판정한다.
  * 판정 기준:
  *   - canonical_url 동일, 또는
  *   - 제목 유사도 ≥ 85%, 또는
