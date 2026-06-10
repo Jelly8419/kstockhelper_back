@@ -338,6 +338,17 @@ create trigger trg_binance_approved_log
 > 등급 매핑: DB `tier`(free/premium) ↔ API `membershipTier`(GENERAL/PREMIUM)는 서비스 레이어에서 변환.
 > 활동 로그는 지금부터 누적 — 기존 회원의 과거 신청/승인 이력은 비어 있다(소급 없음).
 
+### 프리미엄 회원 신청 관리 (신규)
+신청 이력을 row 단위로 보존하는 `applications` 테이블을 도입한다. 승인/거절은
+앱이 호출하는 단일 RPC(`process_premium_application`)로 원자적으로 처리하며,
+기존 Binance 자동 트리거 2개는 제거해 처리 로직을 앱 코드로 일원화한다.
+
+마이그레이션 SQL은 [`migrations/0001_premium_applications.sql`](migrations/0001_premium_applications.sql)에 있다. Supabase SQL Editor에서 전체 실행한다.
+
+> 트리거 제거 후에는 대시보드에서 `binance_uid_status`를 직접 바꿔도 tier/로그가 자동 반영되지 않는다.
+> 모든 승인/거절은 관리자 페이지의 `PATCH /internal/admin/premium-applications/{id}/status`로 처리한다.
+> 신청 적재: `POST /api/binance/connect` 시 `users.binance_uid_status='pending'`과 함께 `applications`에 PENDING row를 insert한다.
+
 ## DART corp_code 매핑
 
 DART는 종목코드가 아닌 8자리 고유번호(corp_code)를 사용한다. (DART API로 검증된 값)

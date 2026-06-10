@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { connectBinanceUid, findUserByBinanceUid } from '../services/users.service';
+import { connectBinanceUid, findUserByBinanceUid, insertApplication } from '../services/users.service';
 import { appendActivityLog } from '../services/admin.service';
 import { logger } from '../utils/logger';
 import type { BinanceConnectResponse } from '../types';
@@ -47,6 +47,10 @@ binanceRouter.post('/connect', async (req, res) => {
         message: '해당 userId를 찾을 수 없습니다.',
       } satisfies BinanceConnectResponse);
     }
+
+    // 신청 이력(applications)에 PENDING row 적재.
+    // 이 row가 관리자 신청 목록의 source of truth이므로 실패 시 에러로 처리한다.
+    await insertApplication(userId, 'BINANCE', binanceUid);
 
     // 활동 로그: UID 신청 (실패해도 신청 자체는 성공 처리)
     try {

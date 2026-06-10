@@ -341,3 +341,54 @@ export interface AdminJwtPayload {
   sub: string; // admins.id
   adminId: string; // admins.admin_id
 }
+
+// ===== 프리미엄 회원 신청 관리 =====
+
+/** 신청 건 상태 (applications.status, PRD 4.2) */
+export type ApplicationStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+/** 승인/거절 처리 입력 (PATCH .../status) — PENDING은 처리 대상이 아님 */
+export type ApplicationAction = 'APPROVED' | 'REJECTED';
+
+/** 프리미엄 신청 목록 아이템 (GET /internal/admin/premium-applications) */
+export interface PremiumApplicationItem {
+  applicationId: string;
+  userId: string;
+  email: string;
+  exchange: Exchange;
+  uid: string;
+  membershipTier: ApiTier;
+  status: ApplicationStatus;
+  appliedAt: string;
+}
+
+export interface PremiumApplicationListResponse {
+  items: PremiumApplicationItem[];
+}
+
+/** 승인/거절 성공 응답 */
+export interface ProcessApplicationResponse {
+  applicationId: string;
+  status: ApplicationAction;
+  processedAt: string;
+}
+
+/**
+ * process_premium_application RPC 반환값 (jsonb).
+ * ok=true면 처리 결과, ok=false면 reason으로 분기.
+ */
+export type ProcessApplicationRpcResult =
+  | {
+      ok: true;
+      applicationId: string;
+      status: ApplicationAction;
+      processedAt: string;
+    }
+  | {
+      ok: false;
+      reason:
+        | 'invalid_status'
+        | 'not_found'
+        | 'inactive_user'
+        | 'already_processed';
+    };

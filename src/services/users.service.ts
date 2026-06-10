@@ -93,3 +93,21 @@ export async function findUserByBinanceUid(binanceUid: string): Promise<string |
   }
   return data && data.length > 0 ? String(data[0].id) : null;
 }
+
+/**
+ * 신청 이력(applications)에 PENDING row를 추가한다.
+ * UID 입력/변경마다 새 row가 쌓여 history로 보존된다(PRD 4.2).
+ */
+export async function insertApplication(
+  userId: string,
+  exchange: 'BINANCE' | 'BYBIT',
+  uid: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('applications')
+    .insert({ user_id: userId, exchange, uid, status: 'PENDING' });
+  if (error) {
+    logger.error('applications insert 실패:', error.message);
+    throw error;
+  }
+}

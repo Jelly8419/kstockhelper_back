@@ -8,6 +8,8 @@ import {
   changeMembershipTier,
   saveMemo,
   ADMIN_MEMO_MAX,
+  listPremiumApplications,
+  processPremiumApplication,
 } from '../services/admin.service';
 import { logger } from '../utils/logger';
 import type {
@@ -15,6 +17,8 @@ import type {
   AdminSimpleResponse,
   AdminUserListResponse,
   ApiTier,
+  PremiumApplicationListResponse,
+  ProcessApplicationResponse,
 } from '../types';
 
 export const adminRouter = Router();
@@ -180,6 +184,82 @@ adminRouter.patch('/users/:userId/memo', async (req, res) => {
     return res.status(500).json({
       success: false,
       message: '관리자 메모를 저장하지 못했습니다. 다시 시도해 주세요.',
+    } satisfies AdminSimpleResponse);
+  }
+});
+
+/**
+ * GET /internal/admin/premium-applications
+ * 처리 대기(PENDING) 프리미엄 신청 목록. applied_at 오름차순.
+ */
+adminRouter.get('/premium-applications', async (_req, res) => {
+  try {
+    const items = await listPremiumApplications();
+    return res.status(200).json({ items } satisfies PremiumApplicationListResponse);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('프리미엄 신청 목록 조회 실패:', msg);
+    return res.status(500).json({
+      success: false,
+      message: '신청 목록을 불러오지 못했습니다. 다시 시도해 주세요.',
+    } satisfies AdminSimpleResponse);
+  }
+});
+
+/**
+ * PATCH /internal/admin/premium-applications/:applicationId/status
+ * 요청: { status: 'APPROVED' | 'REJECTED' }
+ * applications + users + activity_logs를 단일 RPC로 원자 처리.
+ * 이미 처리된 건은 409, 비활성 회원은 409로 차단.
+ */
+adminRouter.patch('/premium-applications/:applicationId/status', async (req, res) => {
+  const { applicationId } = req.params;
+  const { status } = req.body ?? {};
+
+  if (status !== 'APPROVED' && status !== 'REJECTED') {
+    return res.status(400).json({
+      success: false,
+      message: 'status는 APPROVED 또는 REJECTED여야 합니다.',
+    } satisfies AdminSimpleResponse);
+  }
+
+  try {
+    const result = await processPremiumApplication(applicationId, status);
+    if (!result.ok) {
+      switch (result.reason) {
+        case 'not_found':
+          return res.status(404).json({
+            success: false,
+            message: '신청 건을 찾을 수 없습니다.',
+          } satisfies AdminSimpleResponse);
+        case 'already_processed':
+          return res.status(409).json({
+            success: false,
+            message: '이미 처리된 신청 건입니다.',
+          } satisfies AdminSimpleResponse);
+        case 'inactive_user':
+          return res.status(409).json({
+            success: false,
+            message: '비활성 회원의 신청 건은 처리할 수 없습니다.',
+          } satisfies AdminSimpleResponse);
+        default:
+          return res.status(400).json({
+            success: false,
+            message: 'status는 APPROVED 또는 REJECTED여야 합니다.',
+          } satisfies AdminSimpleResponse);
+      }
+    }
+    return res.status(200).json({
+      applicationId: result.applicationId,
+      status: result.status,
+      processedAt: result.processedAt,
+    } satisfies ProcessApplicationResponse);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('프리미엄 신청 처리 실패:', msg);
+    return res.status(500).json({
+      success: false,
+      message: '처리하지 못했습니다. 다시 시도해 주세요.',
     } satisfies AdminSimpleResponse);
   }
 });

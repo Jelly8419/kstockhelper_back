@@ -12,7 +12,10 @@ import type {
   AdminUserDetail,
   AdminUserListItem,
   ApiTier,
+  ApplicationAction,
   Exchange,
+  PremiumApplicationItem,
+  ProcessApplicationRpcResult,
   UidStatus,
   UserStatus,
 } from '../types';
@@ -292,4 +295,82 @@ export async function saveMemo(userId: string, memo: string): Promise<SaveMemoRe
   }
   if (!data || data.length === 0) return { ok: false, reason: 'not_found' };
   return { ok: true };
+}
+
+// ===== 프리미엄 회원 신청 관리 =====
+
+/** applications + users(embed) 조인 조회 행 */
+interface ApplicationRow {
+  id: string;
+  user_id: string;
+  exchange: Exchange;
+  uid: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  applied_at: string;
+  users: { email: string; tier: string | null } | null;
+}
+
+/**
+ * 처리 대기(PENDING) 신청 목록. applied_at 오름차순(먼저 들어온 건 우선, PRD 4.6).
+ * Bybit는 레퍼럴 자동 승인이라 PENDING이 거의 없지만, 테이블에 남아 있으면 그대로 노출한다.
+ */
+export async function listPremiumApplications(): Promise<PremiumApplicationItem[]> {
+  const { data, error } = await supabase
+    .from('applications')
+    .select('id, user_id, exchange, uid, status, applied_at, users(email, tier)')
+    .eq('status', 'PENDING')
+    .order('applied_at', { ascending: true });
+
+  if (error) {
+    logger.error('프리미엄 신청 목록 조회 실패:', error.message);
+    throw error;
+  }
+
+  return (data as unknown as ApplicationRow[] | null ?? []).map((r) => ({
+    applicationId: r.id,
+    userId: r.user_id,
+    email: r.users?.email ?? '',
+    exchange: r.exchange,
+    uid: r.uid,
+    membershipTier: toApiTier(r.users?.tier),
+    status: r.status,
+    appliedAt: r.applied_at,
+  }));
+}
+
+export type ProcessApplicationResult =
+  | { ok: true; applicationId: string; status: ApplicationAction; processedAt: string }
+  | { ok: false; reason: 'invalid_status' | 'not_found' | 'inactive_user' | 'already_processed' };
+
+/**
+ * 신청 건 승인/거절. applications + users + activity_logs를 단일 RPC로 원자 처리한다.
+ * 중복 처리(race)는 RPC 내부 PENDING 조건부 업데이트로 차단(already_processed).
+ * 거절 시 다른 거래소 approved UID가 없으면 tier='free'로 강등(PRD 4.9).
+ */
+export async function processPremiumApplication(
+  applicationId: string,
+  status: ApplicationAction,
+): Promise<ProcessApplicationResult> {
+  const { data, error } = await supabase.rpc('process_premium_application', {
+    p_application_id: applicationId,
+    p_status: status,
+  });
+
+  if (error) {
+    logger.error('프리미엄 신청 처리 실패:', error.message);
+    throw error;
+  }
+
+  const result = data as ProcessApplicationRpcResult;
+  if (!result.ok) {
+    return { ok: false, reason: result.reason };
+  }
+
+  logger.info(`프리미엄 신청 처리 — applicationId=${applicationId}, status=${status}`);
+  return {
+    ok: true,
+    applicationId: result.applicationId,
+    status: result.status,
+    processedAt: result.processedAt,
+  };
 }
