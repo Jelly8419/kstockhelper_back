@@ -30,6 +30,13 @@ export function startScheduler(): void {
     timezone: 'Asia/Seoul',
   });
 
+  // 장 마감 확정값 갱신: 평일 16:00 KST 1회. 장중 마지막 틱(15:40)은 종가가 아닌
+  // 장중값일 수 있어 종가/지수와 어긋난다. 정규장 종료(15:30) 후 한투가 종가를 확정한
+  // 뒤 force=true로 시간창을 무시하고 한 번 더 수집해 종가로 덮어쓴다.
+  cron.schedule('0 16 * * 1-5', () => safeRun('MARKET-CLOSE', () => collectMarketData(true)), {
+    timezone: 'Asia/Seoul',
+  });
+
   // 네이버 뉴스 + Claude 파이프라인: 매 20분 (Claude 비용 발생 — ENABLE_NAVER로 제어)
   if (env.enableNaver) {
     cron.schedule('*/20 * * * *', () => safeRun('NAVER', () => collectNaverNews()), {
@@ -45,7 +52,7 @@ export function startScheduler(): void {
   });
 
   logger.info(
-    `스케줄러 시작 — DART(${env.enableDart ? '1분' : 'off'}) / MARKET(장중 5분) / ` +
+    `스케줄러 시작 — DART(${env.enableDart ? '1분' : 'off'}) / MARKET(장중 5분 + 마감 16:00) / ` +
       `NAVER(${env.enableNaver ? '20분' : 'off'}) / BYBIT(02:00)`,
   );
 
