@@ -15,6 +15,7 @@ import { checkDuplicate } from '../pipeline/dedup';
 import { checkDuplicateAi } from '../pipeline/dedupAi';
 import { classifyNews, shouldPublish } from '../pipeline/classify';
 import { generateNewsBrief } from '../pipeline/newsBrief';
+import { pretranslateNews } from '../services/translation.service';
 import type { NaverNewsResponse, NaverNewsItem } from '../types';
 
 const NAVER_NEWS_URL = 'https://openapi.naver.com/v1/search/news.json';
@@ -273,6 +274,15 @@ export async function collectNaverNews(): Promise<void> {
         stage: 'brief',
         status: 'published',
       });
+
+      // 게시 직후 5개 언어 선제 번역 (목록/상세 첫 노출부터 번역어).
+      // 번역 실패는 게시에 영향 없음 — lazy 조회 때 보강된다.
+      try {
+        await pretranslateNews(newsId);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.warn(`NAVER 선제 번역 실패 (news=${newsId}):`, msg);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       await logProcessing({

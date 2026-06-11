@@ -113,6 +113,37 @@ export interface DartTranslateResult {
   key_points: string[];
 }
 
+// ===== 콘텐츠 다국어 번역 =====
+
+/**
+ * 콘텐츠 번역 대상 locale (PRD: 6개 언어 중 en 제외 5개).
+ * en은 news 본체가 이미 영문이라 번역하지 않고, 그 외 locale은 영문 fallback.
+ */
+export const CONTENT_LOCALES = ['vi', 'ru', 'pt-BR', 'hi', 'uk'] as const;
+export type ContentLocale = (typeof CONTENT_LOCALES)[number];
+
+/** 주어진 locale이 번역 대상(화이트리스트)인지 */
+export function isContentLocale(locale: string): locale is ContentLocale {
+  return (CONTENT_LOCALES as readonly string[]).includes(locale);
+}
+
+/** 번역 파이프라인이 영문 입력을 받아 생성하는 결과(= 번역된 3필드) */
+export interface TranslateContentResult {
+  translated_title: string;
+  summary: string;
+  key_points: string[];
+}
+
+/** news_translations 행 (DB 저장 형태) */
+export interface NewsTranslationRow {
+  news_id: string;
+  locale: ContentLocale;
+  translated_title: string | null;
+  summary: string | null;
+  key_points: string[] | null;
+  created_at?: string;
+}
+
 // ===== 처리 로그 =====
 
 export type ProcessingStatus =
@@ -124,7 +155,9 @@ export type ProcessingStatus =
   | 'gpt_classification_failed'
   | 'gpt_brief_failed'
   | 'published'
-  | 'disclosure_type_unconfirmed';
+  | 'disclosure_type_unconfirmed'
+  | 'naver_cycle' // 비용 계측 메트릭 (cost_metric stage)
+  | 'translate'; // 콘텐츠 번역 비용 계측 (cost_metric stage)
 
 export interface ProcessingLogInsert {
   source: string;
