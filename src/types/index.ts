@@ -113,6 +113,37 @@ export interface DartTranslateResult {
   key_points: string[];
 }
 
+// ===== 콘텐츠 다국어 번역 =====
+
+/**
+ * 콘텐츠 번역 대상 locale (PRD: 6개 언어 중 en 제외 5개).
+ * en은 news 본체가 이미 영문이라 번역하지 않고, 그 외 locale은 영문 fallback.
+ */
+export const CONTENT_LOCALES = ['vi', 'ru', 'pt-BR', 'hi', 'uk'] as const;
+export type ContentLocale = (typeof CONTENT_LOCALES)[number];
+
+/** 주어진 locale이 번역 대상(화이트리스트)인지 */
+export function isContentLocale(locale: string): locale is ContentLocale {
+  return (CONTENT_LOCALES as readonly string[]).includes(locale);
+}
+
+/** 번역 파이프라인이 영문 입력을 받아 생성하는 결과(= 번역된 3필드) */
+export interface TranslateContentResult {
+  translated_title: string;
+  summary: string;
+  key_points: string[];
+}
+
+/** news_translations 행 (DB 저장 형태) */
+export interface NewsTranslationRow {
+  news_id: string;
+  locale: ContentLocale;
+  translated_title: string | null;
+  summary: string | null;
+  key_points: string[] | null;
+  created_at?: string;
+}
+
 // ===== 처리 로그 =====
 
 export type ProcessingStatus =
@@ -125,7 +156,8 @@ export type ProcessingStatus =
   | 'gpt_brief_failed'
   | 'published'
   | 'disclosure_type_unconfirmed'
-  | 'naver_cycle'; // 비용 계측 메트릭 (cost_metric stage)
+  | 'naver_cycle' // 비용 계측 메트릭 (cost_metric stage)
+  | 'translate'; // 콘텐츠 번역 비용 계측 (cost_metric stage)
 
 export interface ProcessingLogInsert {
   source: string;
@@ -211,9 +243,24 @@ export interface BybitAffUserListResult {
   list: BybitAffiliateUser[];
 }
 
+/**
+ * Bybit verify 결과 코드.
+ * 프론트는 code로 i18n key를 매핑하고, message는 영어 fallback으로 사용한다.
+ */
+export type BybitVerifyCode =
+  | 'BYBIT_VERIFY_OK' // 성공: premium 승격 완료
+  | 'BYBIT_UID_REQUIRED' // bybitUid/userId 누락
+  | 'BYBIT_UID_ALREADY_LINKED' // 다른 계정에 이미 연동된 UID
+  | 'BYBIT_REFERRAL_NOT_FOUND' // 우리 레퍼럴 가입 내역 없음
+  | 'BYBIT_USER_NOT_FOUND' // userId 없음
+  | 'BYBIT_VERIFY_ERROR'; // 서버 오류
+
 /** verify 엔드포인트 응답 */
 export interface BybitVerifyResponse {
   success: boolean;
+  /** 프론트 i18n key 매핑용 안정 코드 */
+  code: BybitVerifyCode;
+  /** 영어 fallback 메시지 (code 미매핑 시 노출) */
   message: string;
 }
 
@@ -226,9 +273,23 @@ export interface BybitVerifyResponse {
  */
 export type BinanceUidStatus = 'not_applied' | 'pending' | 'approved' | 'rejected';
 
+/**
+ * Binance connect 결과 코드.
+ * 프론트는 code로 i18n key를 매핑하고, message는 영어 fallback으로 사용한다.
+ */
+export type BinanceConnectCode =
+  | 'BINANCE_CONNECT_OK' // 성공: 신청 접수(pending)
+  | 'BINANCE_UID_REQUIRED' // binanceUid/userId 누락
+  | 'BINANCE_UID_ALREADY_LINKED' // 다른 계정에 이미 연동된 UID
+  | 'BINANCE_USER_NOT_FOUND' // userId 없음
+  | 'BINANCE_CONNECT_ERROR'; // 서버 오류
+
 /** connect 엔드포인트 응답 */
 export interface BinanceConnectResponse {
   success: boolean;
+  /** 프론트 i18n key 매핑용 안정 코드 */
+  code: BinanceConnectCode;
+  /** 영어 fallback 메시지 (code 미매핑 시 노출) */
   message: string;
 }
 

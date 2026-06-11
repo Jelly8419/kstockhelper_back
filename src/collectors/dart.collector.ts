@@ -7,6 +7,7 @@ import { logProcessing } from '../services/processingLog.service';
 import { isPublishableDisclosure } from '../constants/disclosureTypes';
 import { fetchDisclosureText } from './dartDocument';
 import { translateDisclosure } from '../pipeline/dartTranslate';
+import { pretranslateNews } from '../services/translation.service';
 import type { DartListResponse, DartDisclosure, NewsInsert } from '../types';
 
 const DART_LIST_URL = 'https://opendart.fss.or.kr/api/list.json';
@@ -69,10 +70,12 @@ async function fetchDisclosures(corpCode: string): Promise<DartDisclosure[]> {
 
 /**
  * 신규 공시 1건을 처리한다.
- * - 게시 대상 유형이면 본문 확보 → Claude 번역/요약 → news 갱신
+ * - 게시 대상 유형이면 본문 확보 → Claude 번역/요약 → news 갱신 → 선제 다국어 번역
  * - 대상이 아니면 disclosure_type_unconfirmed 로그 후 수집만 유지
+ *
+ * @param newsId insertNewsIfNew로 받은 news.id (선제 번역에 사용)
  */
-async function processNewDisclosure(d: DartDisclosure): Promise<void> {
+async function processNewDisclosure(d: DartDisclosure, newsId: string): Promise<void> {
   if (!isPublishableDisclosure(d.report_nm)) {
     await logProcessing({
       source: 'DART',
@@ -104,6 +107,15 @@ async function processNewDisclosure(d: DartDisclosure): Promise<void> {
       status: 'published',
       reason: d.report_nm,
     });
+
+    // 게시 직후 5개 언어 선제 번역 (summary/key_points/제목만 — 공시 전문은 영문 유지).
+    // 번역 실패는 게시에 영향 없음 — lazy 조회 때 보강된다.
+    try {
+      await pretranslateNews(newsId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(`DART 선제 번역 실패 (news=${newsId}):`, msg);
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await logProcessing({
@@ -140,7 +152,7 @@ export async function collectDartDisclosures(): Promise<void> {
         await linkNewsStocks(newsId, [stock.stockId]);
 
         if (isPublishableDisclosure(d.report_nm)) totalTranslated++;
-        await processNewDisclosure(d);
+        await processNewDisclosure(d, newsId);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

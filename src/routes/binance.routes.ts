@@ -25,7 +25,8 @@ binanceRouter.post('/connect', async (req, res) => {
   ) {
     return res.status(400).json({
       success: false,
-      message: 'binanceUid와 userId는 필수입니다.',
+      code: 'BINANCE_UID_REQUIRED',
+      message: 'binanceUid and userId are required.',
     } satisfies BinanceConnectResponse);
   }
 
@@ -35,7 +36,8 @@ binanceRouter.post('/connect', async (req, res) => {
     if (existingOwner && existingOwner !== userId) {
       return res.status(409).json({
         success: false,
-        message: '이미 다른 계정에 연동된 Binance UID입니다.',
+        code: 'BINANCE_UID_ALREADY_LINKED',
+        message: 'This Binance UID is already linked to another account.',
       } satisfies BinanceConnectResponse);
     }
 
@@ -44,7 +46,8 @@ binanceRouter.post('/connect', async (req, res) => {
     if (!updated) {
       return res.status(404).json({
         success: false,
-        message: '해당 userId를 찾을 수 없습니다.',
+        code: 'BINANCE_USER_NOT_FOUND',
+        message: 'The specified userId was not found.',
       } satisfies BinanceConnectResponse);
     }
 
@@ -67,14 +70,16 @@ binanceRouter.post('/connect', async (req, res) => {
     logger.info(`Binance connect — userId=${userId}, binanceUid=${binanceUid} → pending`);
     return res.status(200).json({
       success: true,
-      message: '신청이 접수되었습니다. 관리자 승인 후 Premium이 적용됩니다.',
+      code: 'BINANCE_CONNECT_OK',
+      message: 'Your application has been received. Premium applies after admin approval.',
     } satisfies BinanceConnectResponse);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error('Binance connect 처리 실패:', msg);
     return res.status(500).json({
       success: false,
-      message: '신청 처리 중 오류가 발생했습니다.',
+      code: 'BINANCE_CONNECT_ERROR',
+      message: 'An error occurred while processing your application.',
     } satisfies BinanceConnectResponse);
   }
 });

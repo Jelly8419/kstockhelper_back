@@ -19,7 +19,8 @@ bybitRouter.post('/verify', async (req, res) => {
   if (typeof bybitUid !== 'string' || !bybitUid.trim() || typeof userId !== 'string' || !userId.trim()) {
     return res.status(400).json({
       success: false,
-      message: 'bybitUid와 userId는 필수입니다.',
+      code: 'BYBIT_UID_REQUIRED',
+      message: 'bybitUid and userId are required.',
     } satisfies BybitVerifyResponse);
   }
 
@@ -29,7 +30,8 @@ bybitRouter.post('/verify', async (req, res) => {
     if (existingOwner && existingOwner !== userId) {
       return res.status(409).json({
         success: false,
-        message: '이미 다른 계정에 연동된 Bybit UID입니다.',
+        code: 'BYBIT_UID_ALREADY_LINKED',
+        message: 'This Bybit UID is already linked to another account.',
       } satisfies BybitVerifyResponse);
     }
 
@@ -38,7 +40,8 @@ bybitRouter.post('/verify', async (req, res) => {
     if (!affiliateUser) {
       return res.status(200).json({
         success: false,
-        message: '우리 레퍼럴로 가입한 내역을 찾을 수 없습니다.',
+        code: 'BYBIT_REFERRAL_NOT_FOUND',
+        message: 'No signup found under our referral.',
       } satisfies BybitVerifyResponse);
     }
 
@@ -47,7 +50,8 @@ bybitRouter.post('/verify', async (req, res) => {
     if (!updated) {
       return res.status(404).json({
         success: false,
-        message: '해당 userId를 찾을 수 없습니다.',
+        code: 'BYBIT_USER_NOT_FOUND',
+        message: 'The specified userId was not found.',
       } satisfies BybitVerifyResponse);
     }
 
@@ -73,14 +77,16 @@ bybitRouter.post('/verify', async (req, res) => {
     logger.info(`Bybit verify 성공 — userId=${userId}, bybitUid=${bybitUid} → premium`);
     return res.status(200).json({
       success: true,
-      message: 'Premium 승격이 완료되었습니다.',
+      code: 'BYBIT_VERIFY_OK',
+      message: 'Premium upgrade completed.',
     } satisfies BybitVerifyResponse);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error('Bybit verify 처리 실패:', msg);
     return res.status(500).json({
       success: false,
-      message: '검증 처리 중 오류가 발생했습니다.',
+      code: 'BYBIT_VERIFY_ERROR',
+      message: 'An error occurred during verification.',
     } satisfies BybitVerifyResponse);
   }
 });

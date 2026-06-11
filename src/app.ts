@@ -6,6 +6,7 @@ import { logger } from './utils/logger';
 import { bybitRouter } from './routes/bybit.routes';
 import { binanceRouter } from './routes/binance.routes';
 import { adminRouter } from './routes/admin.routes';
+import { newsRouter } from './routes/news.routes';
 
 export function createApp() {
   const app = express();
@@ -36,6 +37,7 @@ export function createApp() {
 
   app.use('/api/bybit', bybitRouter);
   app.use('/api/binance', binanceRouter);
+  app.use('/api/news', newsRouter);
   app.use('/internal/admin', adminRouter);
 
   return app;
