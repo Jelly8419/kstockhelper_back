@@ -12,11 +12,17 @@ import type { RecentNewsRow } from '../types';
  * AI를 호출하지 않아 비용을 최소화한다.
  */
 
-/** 이 구간만 AI 호출 — 아래는 신규 확정, 위는 1차 dedup에서 이미 중복 처리됨 */
-const AI_SIM_LOWER = 0.5;
+/**
+ * 이 구간만 AI 호출 — 위(≥0.85)는 1차 dedup에서 이미 중복 처리됨.
+ * 하한 0.25: 같은 사건이라도 표현이 많이 다르면(예: "압수수색했다" vs "추가 압수수색을 실시했다")
+ * 문자 유사도가 0.25~0.48까지 떨어진다. 기존 0.5 하한에서는 이 구간이 통째로 새어
+ * 같은 사건 기사가 중복 게시됐다. 하한을 낮춰 AI가 의미 기반으로 판정하게 한다.
+ * (무관 기사 폭증은 같은 종목 한정 + MAX_COMPARE_PAIRS 상한으로 억제)
+ */
+const AI_SIM_LOWER = 0.25;
 const AI_SIM_UPPER = 0.85;
-/** 후보당 AI에 넘길 비교 대상 최대 건수 (토큰/비용 상한) */
-const MAX_COMPARE_PAIRS = 5;
+/** 후보당 AI에 넘길 비교 대상 최대 건수 (토큰/비용 상한). 하한을 낮춘 만큼 약간 늘림 */
+const MAX_COMPARE_PAIRS = 8;
 
 const DEDUP_SYSTEM = `You are a news deduplication judge for K-Stock Helper.
 
