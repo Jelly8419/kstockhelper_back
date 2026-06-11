@@ -124,7 +124,8 @@ export type ProcessingStatus =
   | 'gpt_classification_failed'
   | 'gpt_brief_failed'
   | 'published'
-  | 'disclosure_type_unconfirmed';
+  | 'disclosure_type_unconfirmed'
+  | 'naver_cycle'; // 비용 계측 메트릭 (cost_metric stage)
 
 export interface ProcessingLogInsert {
   source: string;

@@ -1,5 +1,5 @@
 import { CLAUDE_MODELS } from '../config/anthropic';
-import { callClaudeJson } from './claudeJson';
+import { callClaudeJsonWithUsage, type ClaudeUsage } from './claudeJson';
 import type { ClassificationResult } from '../types';
 
 const CLASSIFY_SYSTEM = `You are a financial news classifier for K-Stock Helper.
@@ -40,13 +40,13 @@ export function shouldPublish(r: ClassificationResult): boolean {
   return r.decision === 'publish' && r.confidence >= 80 && (r.related_stocks?.length ?? 0) >= 1;
 }
 
-/** 뉴스 제목 + snippet을 분류한다. */
+/** 뉴스 제목 + snippet을 분류한다. usage(토큰 사용량)를 함께 반환 — 비용 계측용. */
 export async function classifyNews(input: {
   title: string;
   description: string;
-}): Promise<ClassificationResult> {
+}): Promise<{ result: ClassificationResult; usage: ClaudeUsage }> {
   const user = `Title: ${input.title}\n\nDescription/snippet: ${input.description}`;
-  return callClaudeJson<ClassificationResult>({
+  return callClaudeJsonWithUsage<ClassificationResult>({
     model: CLAUDE_MODELS.classify,
     system: CLASSIFY_SYSTEM,
     user,
