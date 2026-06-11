@@ -210,9 +210,24 @@ export interface BybitAffUserListResult {
   list: BybitAffiliateUser[];
 }
 
+/**
+ * Bybit verify 결과 코드.
+ * 프론트는 code로 i18n key를 매핑하고, message는 영어 fallback으로 사용한다.
+ */
+export type BybitVerifyCode =
+  | 'BYBIT_VERIFY_OK' // 성공: premium 승격 완료
+  | 'BYBIT_UID_REQUIRED' // bybitUid/userId 누락
+  | 'BYBIT_UID_ALREADY_LINKED' // 다른 계정에 이미 연동된 UID
+  | 'BYBIT_REFERRAL_NOT_FOUND' // 우리 레퍼럴 가입 내역 없음
+  | 'BYBIT_USER_NOT_FOUND' // userId 없음
+  | 'BYBIT_VERIFY_ERROR'; // 서버 오류
+
 /** verify 엔드포인트 응답 */
 export interface BybitVerifyResponse {
   success: boolean;
+  /** 프론트 i18n key 매핑용 안정 코드 */
+  code: BybitVerifyCode;
+  /** 영어 fallback 메시지 (code 미매핑 시 노출) */
   message: string;
 }
 
@@ -225,9 +240,23 @@ export interface BybitVerifyResponse {
  */
 export type BinanceUidStatus = 'not_applied' | 'pending' | 'approved' | 'rejected';
 
+/**
+ * Binance connect 결과 코드.
+ * 프론트는 code로 i18n key를 매핑하고, message는 영어 fallback으로 사용한다.
+ */
+export type BinanceConnectCode =
+  | 'BINANCE_CONNECT_OK' // 성공: 신청 접수(pending)
+  | 'BINANCE_UID_REQUIRED' // binanceUid/userId 누락
+  | 'BINANCE_UID_ALREADY_LINKED' // 다른 계정에 이미 연동된 UID
+  | 'BINANCE_USER_NOT_FOUND' // userId 없음
+  | 'BINANCE_CONNECT_ERROR'; // 서버 오류
+
 /** connect 엔드포인트 응답 */
 export interface BinanceConnectResponse {
   success: boolean;
+  /** 프론트 i18n key 매핑용 안정 코드 */
+  code: BinanceConnectCode;
+  /** 영어 fallback 메시지 (code 미매핑 시 노출) */
   message: string;
 }
 
