@@ -1,5 +1,5 @@
 import { CLAUDE_MODELS } from '../config/anthropic';
-import { callClaudeJson } from './claudeJson';
+import { callClaudeJsonWithUsage, type ClaudeUsage } from './claudeJson';
 import { similarity } from '../utils/similarity';
 import type { RecentNewsRow } from '../types';
 
@@ -51,6 +51,22 @@ export interface AiDedupResult {
   isDuplicate: boolean;
   reason?: string;
   matchedExternalId?: string;
+  /** 이번 dedup 판정에서 발생한 실제 Claude 호출 수 (비용 계측용) */
+  aiCalls: number;
+  /** 이번 dedup 판정의 총 입력 토큰(풀가+캐시쓰기+캐시읽기 합산) */
+  inputTokens: number;
+  /** 이번 dedup 판정의 총 출력 토큰 */
+  outputTokens: number;
+}
+
+/** ClaudeUsage를 누적기에 더한다. */
+function addUsage(
+  acc: { calls: number; input: number; output: number },
+  u: ClaudeUsage,
+): void {
+  acc.calls += 1;
+  acc.input += u.inputTokens + u.cacheCreationTokens + u.cacheReadTokens;
+  acc.output += u.outputTokens;
 }
 
 interface AiDedupVerdict {
@@ -94,8 +110,12 @@ export async function checkDuplicateAi(
     }
   }
 
+  // 호출별 토큰 누적기 (비용 계측)
+  const acc = { calls: 0, input: 0, output: 0 };
+
   if (pairs.length === 0) {
-    return { isDuplicate: false }; // AI 호출 없음 — 비용 0
+    // AI 호출 없음 — 비용 0
+    return { isDuplicate: false, aiCalls: 0, inputTokens: 0, outputTokens: 0 };
   }
 
   // 유사도 높은 순으로 상한까지만 AI 비교 (가장 중복 가능성 높은 것부터)
@@ -107,21 +127,25 @@ export async function checkDuplicateAi(
       `New article:\nTitle: ${candidate.title}\nBody: ${candidate.body}\n\n` +
       `Existing article:\nTitle: ${row.title}\nBody: ${row.body}`;
 
-    const verdict = await callClaudeJson<AiDedupVerdict>({
+    const { result: verdict, usage } = await callClaudeJsonWithUsage<AiDedupVerdict>({
       model: CLAUDE_MODELS.classify, // haiku
       system: DEDUP_SYSTEM,
       user,
       maxTokens: 256,
     });
+    addUsage(acc, usage);
 
     if (verdict.duplicate) {
       return {
         isDuplicate: true,
         reason: `AI 내용 중복: ${verdict.reason}`,
         matchedExternalId: row.external_id,
+        aiCalls: acc.calls,
+        inputTokens: acc.input,
+        outputTokens: acc.output,
       };
     }
   }
 
-  return { isDuplicate: false };
+  return { isDuplicate: false, aiCalls: acc.calls, inputTokens: acc.input, outputTokens: acc.output };
 }

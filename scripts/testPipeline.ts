@@ -218,7 +218,7 @@ async function testNaver(): Promise<void> {
 
       let classification;
       try {
-        classification = await classifyNews({ title, description });
+        ({ result: classification } = await classifyNews({ title, description }));
       } catch (err) {
         failed++;
         const msg = errMsg(err);

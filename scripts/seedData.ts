@@ -199,7 +199,7 @@ async function seedNaverForStock(stock: _StockMeta, need: number): Promise<numbe
 
     let classification;
     try {
-      classification = await classifyNews({ title, description });
+      ({ result: classification } = await classifyNews({ title, description }));
     } catch {
       continue;
     }

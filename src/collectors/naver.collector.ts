@@ -108,6 +108,14 @@ export async function collectNaverNews(): Promise<void> {
   let publishedCount = 0;
   let cacheSkippedCount = 0;
 
+  // ── 비용 계측 누적기 (이번 주기 haiku 토큰 사용량) ──
+  let classifyCalls = 0;
+  let classifyInTok = 0;
+  let classifyOutTok = 0;
+  let dedupCalls = 0;
+  let dedupInTok = 0;
+  let dedupOutTok = 0;
+
   for (const p of prepared) {
     // 배치 내 동일 URL 중복
     if (seenInBatch.has(p.canonicalUrl)) {
@@ -165,7 +173,17 @@ export async function collectNaverNews(): Promise<void> {
     // 5) Claude classification (haiku)
     let classification;
     try {
-      classification = await classifyNews({ title: p.normalizedTitle, description: p.description });
+      const classifyRes = await classifyNews({
+        title: p.normalizedTitle,
+        description: p.description,
+      });
+      classification = classifyRes.result;
+      classifyCalls += 1;
+      classifyInTok +=
+        classifyRes.usage.inputTokens +
+        classifyRes.usage.cacheCreationTokens +
+        classifyRes.usage.cacheReadTokens;
+      classifyOutTok += classifyRes.usage.outputTokens;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       await logProcessing({
@@ -208,6 +226,9 @@ export async function collectNaverNews(): Promise<void> {
       },
       recent,
     );
+    dedupCalls += aiDup.aiCalls;
+    dedupInTok += aiDup.inputTokens;
+    dedupOutTok += aiDup.outputTokens;
     if (aiDup.isDuplicate) {
       await logProcessing({
         source: SOURCE,
@@ -295,8 +316,39 @@ export async function collectNaverNews(): Promise<void> {
     }
   }
 
+  // ── 비용 계측 요약 (이번 주기 haiku 토큰 사용량) ──
+  // haiku 입력 $1/1M, 출력 $5/1M 기준 주기 비용 추정.
+  const haikuInTok = classifyInTok + dedupInTok;
+  const haikuOutTok = classifyOutTok + dedupOutTok;
+  const haikuCost = (haikuInTok * 1.0 + haikuOutTok * 5.0) / 1_000_000;
   logger.info(
     `NAVER 수집 완료 — 게시 ${publishedCount}건 / 후보 ${prepared.length}건 / ` +
       `분류캐시 스킵 ${cacheSkippedCount}건`,
   );
+  logger.info(
+    `[COST] classify ${classifyCalls}회(in ${classifyInTok}/out ${classifyOutTok}) · ` +
+      `dedup ${dedupCalls}회(in ${dedupInTok}/out ${dedupOutTok}) · ` +
+      `haiku $${haikuCost.toFixed(4)}/주기`,
+  );
+
+  // 주기당 1행으로 DB 적재 → 일별 집계로 진짜 비용원 확정.
+  await logProcessing({
+    source: SOURCE,
+    external_id: `cost-metric-${new Date().toISOString()}`,
+    stage: 'cost_metric',
+    status: 'naver_cycle',
+    reason: `haiku $${haikuCost.toFixed(4)}`,
+    meta: {
+      classifyCalls,
+      classifyInTok,
+      classifyOutTok,
+      dedupCalls,
+      dedupInTok,
+      dedupOutTok,
+      haikuInTok,
+      haikuOutTok,
+      candidates: prepared.length,
+      published: publishedCount,
+    },
+  });
 }
