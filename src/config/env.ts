@@ -10,6 +10,15 @@ function required(name: string): string {
   return value;
 }
 
+/** 최소 길이를 강제하는 시크릿 환경변수. 짧으면 기동을 막아 약한 시크릿 배포를 방지한다. */
+function requiredSecret(name: string, minLength: number): string {
+  const value = required(name);
+  if (value.length < minLength) {
+    throw new Error(`환경변수 ${name} 는 최소 ${minLength}자 이상이어야 합니다. (현재 ${value.length}자)`);
+  }
+  return value;
+}
+
 /** boolean 환경변수 파싱. 미설정이면 기본값. 'false'/'0'/'no'/'off'만 false로 본다. */
 function flag(name: string, defaultValue = true): boolean {
   const v = process.env[name];
@@ -30,8 +39,10 @@ export const env = {
   /** Bybit Affiliate API 키/시크릿 */
   bybitAffiliateApiKey: required('BYBIT_AFFILIATE_API_KEY'),
   bybitAffiliateApiSecret: required('BYBIT_AFFILIATE_API_SECRET'),
-  /** 관리자 페이지 JWT 서명 시크릿 (일반 유저 인증과 분리) */
-  jwtSecret: required('JWT_SECRET'),
+  /** 관리자 페이지 JWT 서명 시크릿 (일반 유저 인증과 분리). 최소 32자 강제. */
+  jwtSecret: requiredSecret('JWT_SECRET', 32),
+  /** /internal/admin/* 호출용 공유 시크릿 (프론트 서버만 보유). 최소 32자 강제. */
+  internalApiSecret: requiredSecret('INTERNAL_API_SECRET', 32),
   /** 관리자 토큰 만료 (jsonwebtoken expiresIn 형식). 기본 8h */
   adminTokenTtl: process.env.ADMIN_TOKEN_TTL || '8h',
   /** 프론트엔드 URL (CORS 허용 origin) */

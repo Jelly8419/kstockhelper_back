@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { adminAuth } from '../middleware/adminAuth';
+import { adminLoginRateLimiter } from '../middleware/rateLimit';
 import {
   verifyAdminCredentials,
   issueAdminToken,
@@ -28,7 +29,7 @@ export const adminRouter = Router();
  * 요청: { adminId: string, password: string }
  * 성공 시 { accessToken }. 일반 유저 인증과 분리된 자체 JWT.
  */
-adminRouter.post('/auth/login', async (req, res) => {
+adminRouter.post('/auth/login', adminLoginRateLimiter, async (req, res) => {
   const { adminId, password } = req.body ?? {};
 
   if (typeof adminId !== 'string' || !adminId.trim() || typeof password !== 'string' || !password) {

@@ -21,6 +21,10 @@ create table if not exists applications (
 create index if not exists applications_status_applied_idx on applications (status, applied_at);
 create index if not exists applications_user_id_idx on applications (user_id);
 grant select, insert, update on public.applications to service_role;   -- delete 미부여(이력 보존)
+-- RLS off는 의도된 설계다. 이 테이블은 service_role(백엔드 전용)에게만 grant되고
+-- anon/authenticated 롤에는 어떤 권한도 부여하지 않으므로, RLS 없이도 외부(프론트의
+-- anon 키)에서 직접 접근할 수 없다. service_role 키는 서버에만 보관하며 절대 클라이언트에
+-- 노출하지 않는다(src/config/supabase.ts 참고). 동일 원칙이 admins 테이블에도 적용된다.
 alter table public.applications disable row level security;
 
 -- 2) 기존 Binance 자동 트리거 제거 — 승인 로직을 RPC/앱으로 일원화
