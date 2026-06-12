@@ -1,5 +1,6 @@
 import { supabase } from '../config/supabase';
 import { logger } from '../utils/logger';
+import { buildSlug } from '../utils/slug';
 import type { NewsInsert, NewsUpdate, RecentNewsRow } from '../types';
 
 /**
@@ -43,9 +44,17 @@ export async function updateNews(
   externalId: string,
   patch: NewsUpdate,
 ): Promise<void> {
+  // 영문 제목(translated_title)이 갱신되면 SEO URL용 slug도 함께 파생해 저장한다.
+  // publish 시점에 translated_title이 채워지므로 slug도 그때 한 번 확정되어 고정된다.
+  // (호출 측에서 slug를 명시했다면 그 값을 존중한다.)
+  const finalPatch: NewsUpdate =
+    patch.translated_title !== undefined && patch.slug === undefined
+      ? { ...patch, slug: buildSlug(patch.translated_title) }
+      : patch;
+
   const { error } = await supabase
     .from('news')
-    .update(patch)
+    .update(finalPatch)
     .eq('source', source)
     .eq('external_id', externalId);
 

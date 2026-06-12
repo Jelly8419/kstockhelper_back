@@ -56,6 +56,11 @@ export interface NewsInsert {
 /** 파이프라인 결과로 news 행을 갱신할 때 쓰는 부분 업데이트 타입 */
 export interface NewsUpdate {
   translated_title?: string;
+  /**
+   * SEO URL용 slug (영문 제목 기반). updateNews가 translated_title로부터
+   * 자동 파생해 저장하므로 호출 측에서 직접 넘길 필요는 없다.
+   */
+  slug?: string | null;
   english_translation?: string;
   summary?: string;
   key_points?: string[];
