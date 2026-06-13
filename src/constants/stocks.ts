@@ -59,6 +59,18 @@ export const STOCK_ID_BY_CODE: Record<string, string> = Object.fromEntries(
 );
 
 /**
+ * 핫뉴스 관련 종목 화이트리스트 (stocks.id 슬러그).
+ * 관리자가 핫뉴스 등록 시 stock_ids로 직접 받는 값의 허용 집합.
+ * STOCKS에서 파생해 종목 추가 시 자동 동기화된다.
+ */
+export const RELATED_STOCK_IDS: readonly string[] = STOCKS.map((s) => s.stockId);
+
+/** 주어진 값이 허용된 종목 슬러그인지 */
+export function isValidStockId(value: string): boolean {
+  return RELATED_STOCK_IDS.includes(value);
+}
+
+/**
  * 시장 지수 (한국투자증권 KIS 국내업종 현재지수 API).
  * symbol: market_data 테이블 키 (기존 Yahoo 심볼 유지 — 프론트 호환)
  * kisCode: KIS inquire-index-price 의 fid_input_iscd 업종코드 (코스피 0001 / 코스닥 1001)

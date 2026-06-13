@@ -3,6 +3,7 @@ import { collectDartDisclosures } from '../collectors/dart.collector';
 import { collectMarketData } from '../collectors/market.collector';
 import { collectNaverNews } from '../collectors/naver.collector';
 import { syncAffiliateUsers } from '../collectors/bybitAffiliate';
+import { publishDueScheduled } from '../services/hotNews.service';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 
@@ -51,9 +52,17 @@ export function startScheduler(): void {
     timezone: 'Asia/Seoul',
   });
 
+  // 핫뉴스 예약 게시: 매 1분. due된 scheduled의 published_at을 보강한다.
+  // 노출 자체는 hot_news_public 뷰가 (scheduled AND scheduled_at<=now())로 보장하므로
+  // 이 잡은 게시일 정합성만 맞춘다. due 건이 없으면 가벼운 쿼리 1회 — 비용 무시 가능.
+  // due 판정은 DB now()(UTC) 기준이라 timezone과 무관하다.
+  cron.schedule('* * * * *', () => safeRun('HOT_NEWS', () => publishDueScheduled().then(() => {})), {
+    timezone: 'Asia/Seoul',
+  });
+
   logger.info(
     `스케줄러 시작 — DART(${env.enableDart ? '1분' : 'off'}) / MARKET(장중 5분 + 마감 16:00) / ` +
-      `NAVER(${env.enableNaver ? '20분' : 'off'}) / BYBIT(02:00)`,
+      `NAVER(${env.enableNaver ? '20분' : 'off'}) / BYBIT(02:00) / HOT_NEWS(1분)`,
   );
 
   // 콜드스타트: 기동 직후 1회 즉시 수집 (초기값 채우기). 비활성 잡은 스킵.
@@ -61,4 +70,6 @@ export function startScheduler(): void {
   if (env.enableDart) safeRun('DART', () => collectDartDisclosures());
   safeRun('MARKET', () => collectMarketData(true));
   if (env.enableNaver) safeRun('NAVER', () => collectNaverNews());
+  // 핫뉴스: 기동 직후 1회 — 다운타임 중 도달한 예약분의 게시일을 즉시 보강.
+  safeRun('HOT_NEWS', () => publishDueScheduled().then(() => {}));
 }

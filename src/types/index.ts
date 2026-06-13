@@ -459,3 +459,75 @@ export type ProcessApplicationRpcResult =
         | 'inactive_user'
         | 'already_processed';
     };
+
+// ===== Korean's Hot News (관리자 직접 등록 + 예약 게시) =====
+
+/** 핫뉴스 게시 상태 (DB hot_news.status, PRD 4.4) */
+export type HotNewsStatus = 'scheduled' | 'published' | 'hidden';
+
+/**
+ * 핫뉴스 등록 입력 (POST). 관리자가 한국어로 title/content를 입력한다.
+ * 영문 가공본(translated_title/summary/key_points)은 백엔드가 자동 생성한다.
+ */
+export interface HotNewsCreateInput {
+  title: string;
+  content: string;
+  /** stocks.id 슬러그 배열(복수 선택). samsung/skhynix/hyundai 중 1개 이상 */
+  relatedStock: string[];
+  status: HotNewsStatus;
+  /** ISO 8601. status='scheduled'일 때 필수 */
+  scheduledAt?: string | null;
+}
+
+/**
+ * 핫뉴스 상태 전환 입력 (PATCH). MVP는 내용 수정 불가 — 상태(+예약시각)만 변경한다.
+ */
+export interface HotNewsStatusPatch {
+  status: HotNewsStatus;
+  /** status='scheduled'로 전환 시 필수 */
+  scheduledAt?: string | null;
+}
+
+/** hot_news 테이블 INSERT 페이로드 (영문 가공본 포함, snake_case) */
+export interface HotNewsRowInsert {
+  title: string;
+  content: string;
+  translated_title: string | null;
+  summary: string | null;
+  key_points: string[] | null;
+  slug: string | null;
+  stock_ids: string[];
+  status: HotNewsStatus;
+  scheduled_at: string | null;
+  published_at: string | null;
+}
+
+/** 관리자 목록 아이템 (GET /internal/admin/hot-news) — 본문 미포함 */
+export interface HotNewsListItem {
+  id: string;
+  seqId: number;
+  title: string;
+  relatedStock: string[];
+  status: HotNewsStatus;
+  scheduledAt: string | null;
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** 관리자 단건 (GET /internal/admin/hot-news/{id}) — 편집용 한국어 원문 본문 포함 */
+export interface HotNewsDetail extends HotNewsListItem {
+  /** 관리자가 입력한 한국어 원문 본문 */
+  content: string;
+}
+
+/** 등록 성공 응답 */
+export interface HotNewsCreateResponse {
+  success: true;
+  message: string;
+  id: string;
+}
+
+export interface HotNewsListResponse {
+  items: HotNewsListItem[];
+}
