@@ -12,6 +12,15 @@ import {
   listPremiumApplications,
   processPremiumApplication,
 } from '../services/admin.service';
+import {
+  validateCreateInput,
+  validateStatusPatch,
+  createHotNews,
+  changeHotNewsStatus,
+  deleteHotNews,
+  listHotNews,
+  getHotNews,
+} from '../services/hotNews.service';
 import { logger } from '../utils/logger';
 import type {
   AdminLoginResponse,
@@ -20,6 +29,10 @@ import type {
   ApiTier,
   PremiumApplicationListResponse,
   ProcessApplicationResponse,
+  HotNewsCreateInput,
+  HotNewsStatusPatch,
+  HotNewsListResponse,
+  HotNewsCreateResponse,
 } from '../types';
 
 export const adminRouter = Router();
@@ -261,6 +274,155 @@ adminRouter.patch('/premium-applications/:applicationId/status', async (req, res
     return res.status(500).json({
       success: false,
       message: '처리하지 못했습니다. 다시 시도해 주세요.',
+    } satisfies AdminSimpleResponse);
+  }
+});
+
+// ===== Korean's Hot News (관리자 직접 등록 + 예약 게시) =====
+//
+// MVP 정책:
+//   - 내용(title/content/relatedStock)은 등록 후 수정 불가 → PATCH는 상태(+예약일시) 전환 전용.
+//   - 삭제는 hard delete. (/internal/admin은 internalGuard 경유라 브라우저 CORS preflight 무관.)
+
+/**
+ * GET /internal/admin/hot-news
+ * 핫뉴스 목록 (전체 상태, 등록일 최신순). 본문 미포함.
+ */
+adminRouter.get('/hot-news', async (_req, res) => {
+  try {
+    const items = await listHotNews();
+    return res.status(200).json({ items } satisfies HotNewsListResponse);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('핫뉴스 목록 조회 실패:', msg);
+    return res.status(500).json({
+      success: false,
+      message: '핫뉴스 목록을 불러오지 못했습니다. 다시 시도해 주세요.',
+    } satisfies AdminSimpleResponse);
+  }
+});
+
+/**
+ * GET /internal/admin/hot-news/:id
+ * 핫뉴스 단건 (편집용 — 한국어 원문 본문 포함).
+ */
+adminRouter.get('/hot-news/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const detail = await getHotNews(id);
+    if (!detail) {
+      return res.status(404).json({
+        success: false,
+        message: '핫뉴스를 찾을 수 없습니다.',
+      } satisfies AdminSimpleResponse);
+    }
+    return res.status(200).json(detail);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('핫뉴스 단건 조회 실패:', msg);
+    return res.status(500).json({
+      success: false,
+      message: '핫뉴스를 불러오지 못했습니다. 다시 시도해 주세요.',
+    } satisfies AdminSimpleResponse);
+  }
+});
+
+/**
+ * POST /internal/admin/hot-news
+ * 핫뉴스 등록. 한국어 원문 → 영문 가공 + 5개 언어 선제 번역 (부수효과).
+ * 요청: { title, content, relatedStock: string[], status, scheduledAt? }
+ */
+adminRouter.post('/hot-news', async (req, res) => {
+  const input = req.body as HotNewsCreateInput;
+
+  const valid = validateCreateInput(input);
+  if (!valid.ok) {
+    return res.status(400).json({
+      success: false,
+      message: valid.message,
+    } satisfies AdminSimpleResponse);
+  }
+
+  try {
+    const id = await createHotNews(input);
+    return res.status(201).json({
+      success: true,
+      message: '핫뉴스가 등록되었습니다.',
+      id,
+    } satisfies HotNewsCreateResponse);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('핫뉴스 등록 실패:', msg);
+    return res.status(500).json({
+      success: false,
+      message: '뉴스를 저장하지 못했습니다. 다시 시도해 주세요.',
+    } satisfies AdminSimpleResponse);
+  }
+});
+
+/**
+ * PATCH /internal/admin/hot-news/:id
+ * 게시 상태 전환 전용 (MVP: 내용 수정 불가).
+ * 요청: { status, scheduledAt? }
+ */
+adminRouter.patch('/hot-news/:id', async (req, res) => {
+  const { id } = req.params;
+  const patch = req.body as HotNewsStatusPatch;
+
+  const valid = validateStatusPatch(patch);
+  if (!valid.ok) {
+    return res.status(400).json({
+      success: false,
+      message: valid.message,
+    } satisfies AdminSimpleResponse);
+  }
+
+  try {
+    const result = await changeHotNewsStatus(id, patch);
+    if (!result.ok) {
+      return res.status(404).json({
+        success: false,
+        message: '핫뉴스를 찾을 수 없습니다.',
+      } satisfies AdminSimpleResponse);
+    }
+    return res.status(200).json({
+      success: true,
+      message: '핫뉴스 상태가 변경되었습니다.',
+    } satisfies AdminSimpleResponse);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('핫뉴스 상태 변경 실패:', msg);
+    return res.status(500).json({
+      success: false,
+      message: '뉴스를 저장하지 못했습니다. 다시 시도해 주세요.',
+    } satisfies AdminSimpleResponse);
+  }
+});
+
+/**
+ * DELETE /internal/admin/hot-news/:id
+ * 핫뉴스 실제 삭제 (hard delete). 번역은 FK cascade로 함께 삭제.
+ */
+adminRouter.delete('/hot-news/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const result = await deleteHotNews(id);
+    if (!result.ok) {
+      return res.status(404).json({
+        success: false,
+        message: '핫뉴스를 찾을 수 없습니다.',
+      } satisfies AdminSimpleResponse);
+    }
+    return res.status(200).json({
+      success: true,
+      message: '핫뉴스가 삭제되었습니다.',
+    } satisfies AdminSimpleResponse);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('핫뉴스 삭제 실패:', msg);
+    return res.status(500).json({
+      success: false,
+      message: '뉴스를 삭제하지 못했습니다. 다시 시도해 주세요.',
     } satisfies AdminSimpleResponse);
   }
 });

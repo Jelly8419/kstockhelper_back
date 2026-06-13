@@ -34,7 +34,7 @@ export function createApp() {
       logger.warn(`CORS 거부 — origin=${origin} (허용=${env.frontendUrl})`);
       return callback(null, false);
     },
-    methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
   };
 
