@@ -12,6 +12,7 @@ import { binanceRouter } from './routes/binance.routes';
 import { adminRouter } from './routes/admin.routes';
 import { newsRouter } from './routes/news.routes';
 import { priceGapRouter } from './routes/priceGap.routes';
+import { featureFlagsRouter } from './routes/featureFlags.routes';
 
 export function createApp() {
   const app = express();
@@ -54,6 +55,7 @@ export function createApp() {
   app.use('/api/binance', binanceRouter);
   app.use('/api/news', newsRouter);
   app.use('/api/price-gap', priceGapRouter);
+  app.use('/api/feature-flags', featureFlagsRouter);
 
   // 내부 관리자 API — 공유 시크릿 헤더 게이트 통과 후에만 라우터 진입
   app.use('/internal/admin', internalGuard, adminRouter);

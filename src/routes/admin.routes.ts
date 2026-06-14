@@ -21,6 +21,7 @@ import {
   listHotNews,
   getHotNews,
 } from '../services/hotNews.service';
+import { getAllFlags, setFlag, isKnownFlagKey } from '../services/featureFlags.service';
 import { logger } from '../utils/logger';
 import type {
   AdminLoginResponse,
@@ -423,6 +424,61 @@ adminRouter.delete('/hot-news/:id', async (req, res) => {
     return res.status(500).json({
       success: false,
       message: '뉴스를 삭제하지 못했습니다. 다시 시도해 주세요.',
+    } satisfies AdminSimpleResponse);
+  }
+});
+
+// ===== Feature Flags (기능 노출 토글) =====
+
+/**
+ * GET /internal/admin/feature-flags
+ * 현재 전체 flag 상태 (관리자 UI 초기 표시용).
+ */
+adminRouter.get('/feature-flags', async (_req, res) => {
+  try {
+    const flags = await getAllFlags();
+    return res.status(200).json({ success: true, data: flags });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('feature-flags 조회 실패:', msg);
+    return res.status(500).json({
+      success: false,
+      message: '기능 설정을 불러오지 못했습니다. 다시 시도해 주세요.',
+    } satisfies AdminSimpleResponse);
+  }
+});
+
+/**
+ * PATCH /internal/admin/feature-flags
+ * 요청: { priceGapPublic: boolean } (알려진 flag 키 1개 이상)
+ * 응답: { success, data: <변경 후 전체 flag> }
+ */
+adminRouter.patch('/feature-flags', async (req, res) => {
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const entries = Object.entries(body);
+
+  // 알려진 키 + boolean 값만 허용. 하나도 유효하지 않으면 400.
+  const valid = entries.filter(([k, v]) => isKnownFlagKey(k) && typeof v === 'boolean');
+  if (valid.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: '변경할 flag 키와 boolean 값이 필요합니다.',
+    } satisfies AdminSimpleResponse);
+  }
+
+  try {
+    const updatedBy = req.admin?.adminId ?? null;
+    let flags = await getAllFlags();
+    for (const [k, v] of valid) {
+      if (isKnownFlagKey(k)) flags = await setFlag(k, v as boolean, updatedBy);
+    }
+    return res.status(200).json({ success: true, data: flags });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('feature-flags 변경 실패:', msg);
+    return res.status(500).json({
+      success: false,
+      message: '기능 설정을 변경하지 못했습니다. 다시 시도해 주세요.',
     } satisfies AdminSimpleResponse);
   }
 });

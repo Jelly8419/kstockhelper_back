@@ -234,6 +234,17 @@ export interface GapOhlcRow {
   avg_gap: number | null; // 저장만, 차트는 close 사용
 }
 
+// ===== Feature Flags (기능 노출 토글) =====
+
+/**
+ * 프론트 노출 제어용 flag 집합. 키가 없으면 false(미노출)로 간주.
+ * MVP는 priceGapPublic 하나. 향후 key 추가 시 여기에 확장.
+ */
+export interface FeatureFlags {
+  /** Price Gap Monitor 프론트 노출 여부 */
+  priceGapPublic: boolean;
+}
+
 // ===== 한국투자증권(KIS) OpenAPI (주식/지수 현재가) =====
 
 /** 국내주식 현재가 시세 응답 (inquire-price, TR FHKST01010100) */
