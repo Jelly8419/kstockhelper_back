@@ -187,6 +187,64 @@ export interface MarketDataUpsert {
   updated_at: string; // ISO timestamp
 }
 
+// ===== Price Gap Monitor =====
+
+/**
+ * 갭 측정 대상 거래소 (소문자 — perp 시세/OHLC 도메인).
+ * 프리미엄 신청 도메인의 Exchange('BINANCE'|'BYBIT', 대문자)와 별개다.
+ */
+export type GapExchange = 'binance' | 'bybit';
+
+/**
+ * 한 시점(1초 tick)의 갭 계산 결과. (종목 × 거래소) 한 조합.
+ * gap이 null이면 입력 중 하나가 누락/stale이라 계산 불가한 상태.
+ */
+export interface GapTick {
+  ts: number; // epoch ms (계산 시각)
+  stockCode: string; // '005930'
+  exchange: GapExchange;
+  krPrice: number | null; // 원화 체결가
+  usdRef: number | null; // KR price / USDKRW
+  exPrice: number | null; // 거래소 perp 가격(USDT)
+  gap: number | null; // (exPrice - usdRef) / usdRef * 100
+}
+
+/** latest API가 내려주는, 한 (종목×거래소) 조합의 스냅샷 행 */
+export interface GapSnapshotRow {
+  stockCode: string;
+  stockName: string;
+  exchange: GapExchange;
+  krPrice: number | null;
+  usdRef: number | null;
+  exPrice: number | null;
+  gap: number | null;
+  ts: number; // 이 값이 산출된 시각 (epoch ms)
+}
+
+/** price_gap_ohlc 테이블 1행 (1분 OHLC 집계) */
+export interface GapOhlcRow {
+  timestamp_minute: string; // ISO (분 경계)
+  stock_code: string;
+  stock_name: string;
+  exchange: GapExchange;
+  open_gap: number;
+  high_gap: number;
+  low_gap: number;
+  close_gap: number;
+  avg_gap: number | null; // 저장만, 차트는 close 사용
+}
+
+// ===== Feature Flags (기능 노출 토글) =====
+
+/**
+ * 프론트 노출 제어용 flag 집합. 키가 없으면 false(미노출)로 간주.
+ * MVP는 priceGapPublic 하나. 향후 key 추가 시 여기에 확장.
+ */
+export interface FeatureFlags {
+  /** Price Gap Monitor 프론트 노출 여부 */
+  priceGapPublic: boolean;
+}
+
 // ===== 한국투자증권(KIS) OpenAPI (주식/지수 현재가) =====
 
 /** 국내주식 현재가 시세 응답 (inquire-price, TR FHKST01010100) */

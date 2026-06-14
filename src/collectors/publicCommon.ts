@@ -39,6 +39,21 @@ export function isMarketOpen(now: Date = new Date()): boolean {
   return isWeekday && minutes >= MARKET_OPEN_MIN && minutes <= MARKET_CLOSE_MIN;
 }
 
+/** Price Gap Monitor 운영 시간창: 평일 09:00 ~ 15:35 KST (PRD §4) */
+const PRICE_GAP_OPEN_MIN = 9 * 60; // 09:00
+const PRICE_GAP_CLOSE_MIN = 15 * 60 + 35; // 15:35
+
+/**
+ * 현재 시각이 Price Gap Monitor 운영 시간(평일 09:00~15:35 KST)인지 판정한다.
+ * isMarketOpen(09:01~15:41, 5분봉 market 수집용)과 시간창이 달라 별도 함수로 분리한다.
+ * (market.collector 회귀를 막기 위해 기존 함수를 수정하지 않음)
+ */
+export function isPriceGapWindow(now: Date = new Date()): boolean {
+  const { weekday, minutes } = kstWeekdayAndMinutes(now);
+  const isWeekday = weekday >= 1 && weekday <= 5;
+  return isWeekday && minutes >= PRICE_GAP_OPEN_MIN && minutes <= PRICE_GAP_CLOSE_MIN;
+}
+
 /**
  * 한투 호출 간 기본 간격(ms). 한투 실전 API는 초당 거래건수 제한(EGW00201)이 있어
  * 연속 호출 시 일부가 500으로 떨어진다. 1일 1회·총 5호출이라 지연은 무의미.
