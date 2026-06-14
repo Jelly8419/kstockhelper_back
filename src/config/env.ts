@@ -56,4 +56,19 @@ export const env = {
    */
   enableDart: flag('ENABLE_DART'),
   enableNaver: flag('ENABLE_NAVER'),
+  /**
+   * Price Gap Monitor — 한국주식 USD환산가 vs 거래소 perp 갭 수집/제공.
+   * 기본 true. 로컬에서 KIS/거래소 WS를 띄우기 싫으면 false로 끈다.
+   */
+  enablePriceGap: flag('ENABLE_PRICE_GAP'),
+  /** Basic 지연 노출 기준 (ms). PRD 10분 = 600_000. */
+  priceGapBasicDelayMs: Number(process.env.PRICE_GAP_BASIC_DELAY_MS) || 600_000,
+  /** 갭 계산/스냅샷 tick 주기 (ms). 1초. */
+  priceGapTickMs: Number(process.env.PRICE_GAP_TICK_MS) || 1_000,
+  /** FX(USDKRW) 폴링 주기 (ms). 장중 1분. */
+  fxPollMs: Number(process.env.FX_POLL_MS) || 60_000,
+  /** Binance WS 프레임 무수신 판정 시간 (ms) — 이 시간 내 0건이면 REST 폴백. */
+  binanceWsProbeMs: Number(process.env.BINANCE_WS_PROBE_MS) || 5_000,
+  /** Binance REST 폴백 폴링 주기 (ms). */
+  binanceRestPollMs: Number(process.env.BINANCE_REST_POLL_MS) || 1_500,
 };

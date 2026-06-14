@@ -4,6 +4,8 @@ import { collectMarketData } from '../collectors/market.collector';
 import { collectNaverNews } from '../collectors/naver.collector';
 import { syncAffiliateUsers } from '../collectors/bybitAffiliate';
 import { publishDueScheduled } from '../services/hotNews.service';
+import { startPriceGap, stopPriceGap } from '../priceGap/lifecycle';
+import { isPriceGapWindow } from '../collectors/publicCommon';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 
@@ -60,9 +62,26 @@ export function startScheduler(): void {
     timezone: 'Asia/Seoul',
   });
 
+  // Price Gap Monitor: 장 시작(09:00)에 수집 start, 마감 여유(15:40)에 stop.
+  // 평일만. start/stop은 동기(멱등)라 try/catch로 직접 감싼다.
+  if (env.enablePriceGap) {
+    const safeSync = (name: string, fn: () => void) => {
+      try {
+        fn();
+      } catch (err) {
+        logger.error(`[${name}] 잡 실행 중 예외:`, err instanceof Error ? err.message : String(err));
+      }
+    };
+    cron.schedule('0 9 * * 1-5', () => safeSync('PRICE_GAP', startPriceGap), { timezone: 'Asia/Seoul' });
+    cron.schedule('40 15 * * 1-5', () => safeSync('PRICE_GAP', stopPriceGap), { timezone: 'Asia/Seoul' });
+  } else {
+    logger.warn('Price Gap 수집 비활성화됨 (ENABLE_PRICE_GAP=false)');
+  }
+
   logger.info(
     `스케줄러 시작 — DART(${env.enableDart ? '1분' : 'off'}) / MARKET(장중 5분 + 마감 16:00) / ` +
-      `NAVER(${env.enableNaver ? '20분' : 'off'}) / BYBIT(02:00) / HOT_NEWS(1분)`,
+      `NAVER(${env.enableNaver ? '20분' : 'off'}) / BYBIT(02:00) / HOT_NEWS(1분) / ` +
+      `PRICE_GAP(${env.enablePriceGap ? '09:00~15:40' : 'off'})`,
   );
 
   // 콜드스타트: 기동 직후 1회 즉시 수집 (초기값 채우기). 비활성 잡은 스킵.
@@ -72,4 +91,13 @@ export function startScheduler(): void {
   if (env.enableNaver) safeRun('NAVER', () => collectNaverNews());
   // 핫뉴스: 기동 직후 1회 — 다운타임 중 도달한 예약분의 게시일을 즉시 보강.
   safeRun('HOT_NEWS', () => publishDueScheduled().then(() => {}));
+
+  // Price Gap: 기동 시점이 장중이면 즉시 수집 시작(재배포 중 장중 복구).
+  if (env.enablePriceGap && isPriceGapWindow()) {
+    try {
+      startPriceGap();
+    } catch (err) {
+      logger.error('[PRICE_GAP] 콜드스타트 실패:', err instanceof Error ? err.message : String(err));
+    }
+  }
 }
