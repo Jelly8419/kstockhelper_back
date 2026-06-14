@@ -14,7 +14,7 @@ import { Router } from 'express';
 import { snapshotLatest, snapshotDelayed, currentFx } from '../priceGap/store';
 import { isPriceGapRunning } from '../priceGap/lifecycle';
 import { getOhlc } from '../services/priceGap.service';
-import { isPriceGapWindow } from '../collectors/publicCommon';
+import { isPriceGapActive } from '../priceGap/holiday';
 import { perpSymbolOf, EXCHANGES } from '../priceGap/symbols';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
@@ -32,7 +32,7 @@ priceGapRouter.get('/latest', (req, res) => {
   try {
     const premium = isPremium(req.query.tier);
     const now = Date.now();
-    const marketOpen = isPriceGapWindow() && isPriceGapRunning();
+    const marketOpen = isPriceGapActive() && isPriceGapRunning();
 
     let rows;
     let warmingUp = false;

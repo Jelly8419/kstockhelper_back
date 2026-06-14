@@ -5,7 +5,7 @@ import { collectNaverNews } from '../collectors/naver.collector';
 import { syncAffiliateUsers } from '../collectors/bybitAffiliate';
 import { publishDueScheduled } from '../services/hotNews.service';
 import { startPriceGap, stopPriceGap } from '../priceGap/lifecycle';
-import { isPriceGapWindow } from '../collectors/publicCommon';
+import { refreshHolidayCache, isPriceGapActive } from '../priceGap/holiday';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 
@@ -74,7 +74,11 @@ export function startScheduler(): void {
     };
     cron.schedule('0 9 * * 1-5', () => safeSync('PRICE_GAP', startPriceGap), { timezone: 'Asia/Seoul' });
     cron.schedule('40 15 * * 1-5', () => safeSync('PRICE_GAP', stopPriceGap), { timezone: 'Asia/Seoul' });
-  } else {
+    // 개장일 캐시 갱신: 매일 08:30 KST 1회 (장 시작 전). KIS 권고 "1일 1회 호출" 준수.
+    // 휴장(공휴일)이면 09:00 start가 떠도 marketOpen=false로 정확히 표시된다.
+    cron.schedule('30 8 * * *', () => safeRun('HOLIDAY', () => refreshHolidayCache()), {
+      timezone: 'Asia/Seoul',
+    });
     logger.warn('Price Gap 수집 비활성화됨 (ENABLE_PRICE_GAP=false)');
   }
 
@@ -92,16 +96,19 @@ export function startScheduler(): void {
   // 핫뉴스: 기동 직후 1회 — 다운타임 중 도달한 예약분의 게시일을 즉시 보강.
   safeRun('HOT_NEWS', () => publishDueScheduled().then(() => {}));
 
-  // Price Gap: 기동 시점이 장중이면 즉시 수집 시작(재배포 중 장중 복구).
-  // PRICE_GAP_FORCE_START=true면 장외에도 강제 시작(로컬 테스트용).
-  if (env.enablePriceGap && (isPriceGapWindow() || env.priceGapForceStart)) {
-    try {
-      if (env.priceGapForceStart && !isPriceGapWindow()) {
-        logger.warn('[PRICE_GAP] 장외이지만 강제 시작(PRICE_GAP_FORCE_START) — 로컬 테스트 모드');
-      }
-      startPriceGap();
-    } catch (err) {
-      logger.error('[PRICE_GAP] 콜드스타트 실패:', err instanceof Error ? err.message : String(err));
-    }
+  // Price Gap: 기동 직후 개장일 캐시를 prime한 뒤, 장중(시각+개장일)이면 즉시 수집 시작.
+  // (재배포 중 장중 복구) PRICE_GAP_FORCE_START=true면 장외/휴장에도 강제 시작(로컬 테스트용).
+  if (env.enablePriceGap) {
+    safeRun('HOLIDAY', () =>
+      refreshHolidayCache().then(() => {
+        const active = isPriceGapActive();
+        if (active || env.priceGapForceStart) {
+          if (env.priceGapForceStart && !active) {
+            logger.warn('[PRICE_GAP] 장외/휴장이지만 강제 시작(PRICE_GAP_FORCE_START) — 로컬 테스트 모드');
+          }
+          startPriceGap();
+        }
+      }),
+    );
   }
 }
