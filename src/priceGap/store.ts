@@ -14,10 +14,17 @@
  */
 import { computeGap } from './gap';
 import { GAP_STOCKS, EXCHANGES } from './symbols';
+import { env } from '../config/env';
 import type { GapExchange, GapTick, GapSnapshotRow } from '../types';
 
-/** 소스 신선도 임계 — 장중 이 시간 이상 무수신이면 stale */
+/**
+ * 소스 신선도 임계 — 이 시간 이상 무수신이면 stale.
+ * KR가(WS 체결)·perp(WS/REST ~1.5초)는 짧은 임계로 충분.
+ * FX(USDT/KRW)는 폴링 주기가 fxPollMs(기본 60초)라 별도의 큰 임계가 필요하다
+ * (15초로 두면 폴링 간격 사이 대부분이 항상 stale로 떠버림).
+ */
 const STALE_MS = 15_000;
+const FX_STALE_MS = Math.max(env.fxPollMs * 2 + 30_000, 90_000);
 /** 갭 히스토리 보관 기간 (Basic 10분 지연 + 여유 5분) */
 const BUFFER_MS = 15 * 60_000;
 
@@ -66,8 +73,8 @@ export function updateFx(price: number, ts: number = Date.now()): void {
 
 // ── stale 판정 ────────────────────────────────────────────────────────────────
 
-function isStale(point: PricePoint | null, now: number): boolean {
-  return point === null || now - point.ts > STALE_MS;
+function isStale(point: PricePoint | null, now: number, thresholdMs: number = STALE_MS): boolean {
+  return point === null || now - point.ts > thresholdMs;
 }
 
 /** 현재 소스별 stale 상태 스냅샷 (운영 가시성 / latest 응답용) */
@@ -84,7 +91,7 @@ export function staleFlags(now: number = Date.now()): {
       ex[exKey(e, s.code)] = isStale(latestEx.get(exKey(e, s.code)) ?? null, now);
     }
   }
-  return { fx: isStale(latestFx, now), kr, ex };
+  return { fx: isStale(latestFx, now, FX_STALE_MS), kr, ex };
 }
 
 // ── 1초 tick: 갭 계산 + buffer push ──────────────────────────────────────────
@@ -96,7 +103,7 @@ export function staleFlags(now: number = Date.now()): {
  */
 export function tick(now: number = Date.now()): GapTick[] {
   const fxPoint = latestFx;
-  const fxPrice = fxPoint && !isStale(fxPoint, now) ? fxPoint.price : null;
+  const fxPrice = fxPoint && !isStale(fxPoint, now, FX_STALE_MS) ? fxPoint.price : null;
 
   const ticks: GapTick[] = [];
   for (const s of GAP_STOCKS) {
@@ -206,7 +213,7 @@ function toRow(t: GapTick): GapSnapshotRow {
 /** 현재 USDT/KRW 값 (latest 응답의 환율 카드용). stale이면 값은 주되 플래그로 구분. */
 export function currentFx(now: number = Date.now()): { price: number; ts: number; stale: boolean } | null {
   if (!latestFx) return null;
-  return { price: latestFx.price, ts: latestFx.ts, stale: isStale(latestFx, now) };
+  return { price: latestFx.price, ts: latestFx.ts, stale: isStale(latestFx, now, FX_STALE_MS) };
 }
 
 /** 전체 상태 초기화 (lifecycle.stop / 테스트용) */

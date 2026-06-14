@@ -93,8 +93,12 @@ export function startScheduler(): void {
   safeRun('HOT_NEWS', () => publishDueScheduled().then(() => {}));
 
   // Price Gap: 기동 시점이 장중이면 즉시 수집 시작(재배포 중 장중 복구).
-  if (env.enablePriceGap && isPriceGapWindow()) {
+  // PRICE_GAP_FORCE_START=true면 장외에도 강제 시작(로컬 테스트용).
+  if (env.enablePriceGap && (isPriceGapWindow() || env.priceGapForceStart)) {
     try {
+      if (env.priceGapForceStart && !isPriceGapWindow()) {
+        logger.warn('[PRICE_GAP] 장외이지만 강제 시작(PRICE_GAP_FORCE_START) — 로컬 테스트 모드');
+      }
       startPriceGap();
     } catch (err) {
       logger.error('[PRICE_GAP] 콜드스타트 실패:', err instanceof Error ? err.message : String(err));
