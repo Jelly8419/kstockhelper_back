@@ -72,6 +72,11 @@ export const env = {
   /** Binance REST 폴백 폴링 주기 (ms). */
   binanceRestPollMs: Number(process.env.BINANCE_REST_POLL_MS) || 1_500,
   /**
+   * Bybit REST 신선도 백업 폴링 주기 (ms). WS tickers는 체결 시에만 delta가 와서
+   * 한산한 종목은 stale로 깜빡인다 → REST로 주기적 보강. WS가 주 경로라 5초면 충분.
+   */
+  bybitRestPollMs: Number(process.env.BYBIT_REST_POLL_MS) || 5_000,
+  /**
    * 장외에도 Price Gap 수집을 강제로 켠다(로컬 테스트용). 기본 false.
    * true면 기동 시 시간창 무시하고 즉시 start. 운영에서는 켜지 말 것
    * (장외엔 KR 체결가가 없어 gap=null이고 불필요한 WS 연결을 유지하게 됨).
