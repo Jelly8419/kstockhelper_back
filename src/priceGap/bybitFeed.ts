@@ -6,8 +6,9 @@
  * (publicTrade는 MVP 미사용 — tickers.lastPrice로 충분, 대역폭 절감)
  *
  * tickers는 delta 스트림이라 lastPrice가 "거래 발생 시에만" 온다. 거래가 한산한
- * 종목은 구독 후 한동안 가격이 안 채워질 수 있어, 구독 직후 REST(/v5/market/tickers)로
- * 초기 스냅샷을 1회 받아 즉시 채운다. 이후엔 WS delta로 갱신.
+ * 종목은 체결 간격이 stale 임계(15초)를 넘겨 가격이 깜빡인다(값 ↔ "—"). 그래서
+ * WS delta(주 경로, 실시간)와 별개로 REST(/v5/market/tickers)를 주기적으로 폴링해
+ * 신선도를 보강한다. 폴링은 WS 연결 여부와 무관하게 start~stop 동안 항상 돈다.
  *
  * Bybit는 클라이언트가 20초마다 {op:'ping'}을 보내야 연결이 유지된다(KIS와 반대).
  * 한국 IP에서도 정상(PoC 검증). 끊기면 지수백오프 재연결.
@@ -16,6 +17,7 @@ import WebSocket from 'ws';
 import axios from 'axios';
 import { updateExPrice } from './store';
 import { GAP_PERP_SYMBOLS, CODE_BY_PERP_SYMBOL } from './symbols';
+import { env } from '../config/env';
 import { logger } from '../utils/logger';
 
 const BYBIT_WS_URL = 'wss://stream.bybit.com/v5/public/linear';
@@ -28,12 +30,14 @@ let stopped = false;
 let backoffMs = 1_000;
 let reconnectTimer: NodeJS.Timeout | null = null;
 let pingTimer: NodeJS.Timeout | null = null;
+let restPollTimer: NodeJS.Timeout | null = null;
 
 /**
- * 구독 직후 REST로 초기 가격 스냅샷을 1회 채운다 (WS delta가 오기 전 빈 값 방지).
+ * REST(/v5/market/tickers)로 현재 가격을 받아 store에 반영한다.
  * category=linear 전체 tickers 1콜 → 우리 심볼만 추출. 실패해도 WS로 결국 채워지므로 치명적 아님.
+ * 구독 직후 초기 스냅샷 + 이후 주기적 신선도 백업 양쪽에서 호출한다.
  */
-async function primeFromRest(): Promise<void> {
+async function fetchTickersFromRest(): Promise<void> {
   try {
     const { data } = await axios.get(BYBIT_REST_TICKERS, {
       params: { category: 'linear' },
@@ -48,7 +52,7 @@ async function primeFromRest(): Promise<void> {
       if (code && Number.isFinite(price)) updateExPrice('bybit', code, price);
     }
   } catch (err) {
-    logger.warn(`[Bybit] REST 초기 스냅샷 실패(WS로 채워짐): ${err instanceof Error ? err.message : String(err)}`);
+    logger.warn(`[Bybit] REST tickers 폴링 실패(WS로 채워짐): ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
@@ -76,7 +80,7 @@ function connect(): void {
   sock.on('open', () => {
     backoffMs = 1_000;
     sock.send(JSON.stringify({ op: 'subscribe', args: GAP_PERP_SYMBOLS.map((s) => `tickers.${s}`) }));
-    void primeFromRest(); // 구독 직후 초기 스냅샷으로 빈 값 방지
+    void fetchTickersFromRest(); // 구독 직후 초기 스냅샷으로 빈 값 방지
     clearPing();
     pingTimer = setInterval(() => {
       if (sock.readyState === WebSocket.OPEN) sock.send(JSON.stringify({ op: 'ping' }));
@@ -117,17 +121,26 @@ function connect(): void {
   });
 }
 
-/** Bybit WS 수집 시작 */
+/** Bybit WS 수집 시작 (+ REST 신선도 백업 폴링) */
 export function startBybitFeed(): void {
   stopped = false;
   backoffMs = 1_000;
   connect();
+  // WS와 독립적으로 도는 신선도 백업. 한산한 종목이 stale로 깜빡이는 것을 막는다.
+  // (WS가 끊겨 재연결 중이어도 REST는 계속 돌아 가격이 유지됨)
+  if (!restPollTimer) {
+    restPollTimer = setInterval(() => void fetchTickersFromRest(), env.bybitRestPollMs);
+  }
 }
 
 /** Bybit WS 수집 중지 */
 export function stopBybitFeed(): void {
   stopped = true;
   clearPing();
+  if (restPollTimer) {
+    clearInterval(restPollTimer);
+    restPollTimer = null;
+  }
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
