@@ -4,15 +4,18 @@
  * 4개 feed(KIS/Bybit/Binance/FX)를 start/stop하고, 1초 tick으로 갭을 계산해
  * OHLC worker에 흘린다. 스케줄러가 장 시작/마감에 start()/stop()을 호출한다.
  *
- *   start(): feed 4종 기동 + 1초 tick 시작
- *   stop():  1초 tick 중지 + 진행 중 분봉 강제 flush + feed 4종 중지 + store reset
+ *   start(): perp/KIS feed 기동 + 1초 tick 시작
+ *   stop():  1초 tick 중지 + 진행 중 분봉 강제 flush + perp/KIS feed 중지 + store reset
+ *
+ * FX(USDT/KRW) feed는 장 생명주기와 무관하게 24h 독립 가동된다(app 부팅 시 1회 시작).
+ * 업비트/빗썸은 24시간 거래되므로, 장 마감 후에도 환율 카드에 최신값을 채울 수 있다.
+ * 따라서 start/stop은 FX feed를 건드리지 않고, store reset도 latestFx는 보존한다.
  *
  * 멱등: 이미 실행 중이면 start()는 무시. 중복 기동/타이머 누수를 막는다.
  */
 import { startKisFeed, stopKisFeed } from './kisFeed';
 import { startBybitFeed, stopBybitFeed } from './bybitFeed';
 import { startBinanceFeed, stopBinanceFeed } from './binanceFeed';
-import { startFxFeed, stopFxFeed } from './fxFeed';
 import { onTick, flushAll, resetOhlc } from './ohlcWorker';
 import { tick, reset as resetStore } from './store';
 import { env } from '../config/env';
@@ -32,7 +35,6 @@ export function startPriceGap(): void {
   if (running) return;
   running = true;
 
-  startFxFeed();
   startKisFeed();
   startBybitFeed();
   startBinanceFeed();
@@ -54,7 +56,6 @@ export function stopPriceGap(): void {
   // 진행 중 분봉 보존 (정상 종료 한정 — 크래시엔 무력)
   flushAll();
 
-  stopFxFeed();
   stopKisFeed();
   stopBybitFeed();
   stopBinanceFeed();

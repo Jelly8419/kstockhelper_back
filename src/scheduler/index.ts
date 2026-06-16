@@ -5,6 +5,7 @@ import { collectNaverNews } from '../collectors/naver.collector';
 import { syncAffiliateUsers } from '../collectors/bybitAffiliate';
 import { publishDueScheduled } from '../services/hotNews.service';
 import { startPriceGap, stopPriceGap } from '../priceGap/lifecycle';
+import { startFxFeed } from '../priceGap/fxFeed';
 import { refreshHolidayCache, isPriceGapActive } from '../priceGap/holiday';
 import { aggregateMinuteAverages } from '../priceGap/minuteAvg';
 import { backfillYesterday } from '../priceGap/backfill';
@@ -120,6 +121,9 @@ export function startScheduler(): void {
   // Price Gap: 기동 직후 개장일 캐시를 prime한 뒤, 장중(시각+개장일)이면 즉시 수집 시작.
   // (재배포 중 장중 복구) PRICE_GAP_FORCE_START=true면 장외/휴장에도 강제 시작(로컬 테스트용).
   if (env.enablePriceGap) {
+    // FX(USDT/KRW) feed는 장 생명주기와 분리해 24h 가동 — 업비트/빗썸은 24시간 거래라
+    // 장 마감 후에도 환율 카드(usdtKrw)에 최신값을 제공한다. start/stopPriceGap은 건드리지 않음.
+    startFxFeed();
     safeRun('HOLIDAY', () =>
       refreshHolidayCache().then(() => {
         const active = isPriceGapActive();

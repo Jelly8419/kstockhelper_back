@@ -216,10 +216,19 @@ export function currentFx(now: number = Date.now()): { price: number; ts: number
   return { price: latestFx.price, ts: latestFx.ts, stale: isStale(latestFx, now, FX_STALE_MS) };
 }
 
-/** 전체 상태 초기화 (lifecycle.stop / 테스트용) */
+/**
+ * 시장 세션 상태 초기화 (lifecycle.stop). KIS/perp 최신값과 갭 히스토리만 비운다.
+ * latestFx는 비우지 않는다 — FX feed는 24h 독립 가동이라 장 마감 후에도 환율 카드에
+ * 최신값을 제공해야 한다(장 마감 ≠ USDT/KRW 거래 종료).
+ */
 export function reset(): void {
   latestKr.clear();
   latestEx.clear();
-  latestFx = null;
   gapHistory.clear();
+}
+
+/** 전체 상태 초기화 (테스트 전용 — FX 포함 완전 리셋). */
+export function resetAll(): void {
+  reset();
+  latestFx = null;
 }
