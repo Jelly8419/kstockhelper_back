@@ -6,6 +6,8 @@ import { syncAffiliateUsers } from '../collectors/bybitAffiliate';
 import { publishDueScheduled } from '../services/hotNews.service';
 import { startPriceGap, stopPriceGap } from '../priceGap/lifecycle';
 import { refreshHolidayCache, isPriceGapActive } from '../priceGap/holiday';
+import { aggregateMinuteAverages } from '../priceGap/minuteAvg';
+import { backfillYesterday } from '../priceGap/backfill';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 
@@ -79,13 +81,32 @@ export function startScheduler(): void {
     cron.schedule('30 8 * * *', () => safeRun('HOLIDAY', () => refreshHolidayCache()), {
       timezone: 'Asia/Seoul',
     });
+    // 분당 평균 집계: 평일 16:10 KST 1회 (stop 16:40 이후가 아니라, 그날 분봉이 다 적재된 뒤).
+    // price_gap_ohlc → price_gap_minute_avg (period 0/3/5/10/20/30). /latest·/chart 평균 소스.
+    cron.schedule('10 16 * * 1-5', () => safeRun('PRICE_GAP_AVG', () => aggregateMinuteAverages()), {
+      timezone: 'Asia/Seoul',
+    });
+    // 일일 증분 백필(안전망): 평일 06:05 KST. 전일 1영업일을 멱등 재적재해 장중 크래시·재배포로
+    // 실시간이 놓친 분봉 구멍을 메운다. 백필 후 평균을 재집계해 보정값을 반영한다.
+    // (전일이 휴장이면 자동 no-op. holiday 캐시를 먼저 prime해 휴장 판정을 정확히 한다.)
+    cron.schedule(
+      '5 6 * * 1-5',
+      () =>
+        safeRun('PRICE_GAP_BACKFILL', async () => {
+          await refreshHolidayCache();
+          const filled = await backfillYesterday();
+          if (filled) await aggregateMinuteAverages();
+        }),
+      { timezone: 'Asia/Seoul' },
+    );
+  } else {
     logger.warn('Price Gap 수집 비활성화됨 (ENABLE_PRICE_GAP=false)');
   }
 
   logger.info(
     `스케줄러 시작 — DART(${env.enableDart ? '1분' : 'off'}) / MARKET(장중 5분 + 마감 16:00) / ` +
       `NAVER(${env.enableNaver ? '20분' : 'off'}) / BYBIT(02:00) / HOT_NEWS(1분) / ` +
-      `PRICE_GAP(${env.enablePriceGap ? '09:00~15:40' : 'off'})`,
+      `PRICE_GAP(${env.enablePriceGap ? '09:00~15:40, 집계16:10, 증분백필06:05' : 'off'})`,
   );
 
   // 콜드스타트: 기동 직후 1회 즉시 수집 (초기값 채우기). 비활성 잡은 스킵.
@@ -110,5 +131,7 @@ export function startScheduler(): void {
         }
       }),
     );
+    // 콜드스타트 1회 집계: 재배포 직후 평균 테이블이 비지 않도록 보강(멱등).
+    safeRun('PRICE_GAP_AVG', () => aggregateMinuteAverages());
   }
 }
