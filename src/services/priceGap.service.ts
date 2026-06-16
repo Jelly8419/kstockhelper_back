@@ -6,7 +6,7 @@
  */
 import { supabase } from '../config/supabase';
 import { logger } from '../utils/logger';
-import type { GapExchange, GapOhlcRow } from '../types';
+import type { GapExchange, GapOhlcRow, GapMinuteAvgRow } from '../types';
 
 /**
  * 1분 OHLC 1행 저장. (timestamp_minute, stock_code, exchange) 충돌 시 갱신(멱등).
@@ -53,4 +53,83 @@ export async function getOhlc(q: ChartQuery): Promise<GapOhlcRow[]> {
     throw error;
   }
   return (data ?? []) as GapOhlcRow[];
+}
+
+// ── price_gap_minute_avg (분당 평균 사전집계) ──────────────────────────────────
+
+/**
+ * 분당 평균 행 일괄 upsert. (stock_code, exchange, minute_of_day, period) 충돌 시 갱신.
+ * minuteAvg 집계 모듈이 (종목×거래소)별로 호출한다.
+ */
+export async function upsertMinuteAvg(rows: GapMinuteAvgRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  const { error } = await supabase
+    .from('price_gap_minute_avg')
+    .upsert(rows, { onConflict: 'stock_code,exchange,minute_of_day,period' });
+  if (error) {
+    logger.error('price_gap_minute_avg 저장 실패:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * 테이블 과거평균(period=0)용: (종목×거래소)별 minute_of_day → {avg, days} 맵.
+ * /latest가 현재 KST 분으로 즉시 조회할 수 있게 전 종목·거래소를 한 번에 읽는다.
+ */
+export async function getPastAvgByMinute(): Promise<
+  Map<string, { avg: number; days: number }>
+> {
+  const out = new Map<string, { avg: number; days: number }>();
+  const PAGE = 1000;
+  let from = 0;
+  for (;;) {
+    const { data, error } = await supabase
+      .from('price_gap_minute_avg')
+      .select('stock_code, exchange, minute_of_day, avg_close_gap, available_days')
+      .eq('period', 0)
+      .range(from, from + PAGE - 1);
+    if (error) {
+      logger.error('price_gap_minute_avg(period=0) 조회 실패:', error.message);
+      throw error;
+    }
+    const rows = data ?? [];
+    for (const r of rows) {
+      // 키: exchange:stock_code:minute_of_day
+      out.set(`${r.exchange}:${r.stock_code}:${r.minute_of_day}`, {
+        avg: r.avg_close_gap as number,
+        days: r.available_days as number,
+      });
+    }
+    if (rows.length < PAGE) break;
+    from += PAGE;
+  }
+  return out;
+}
+
+/**
+ * 차트 평균선(period=N)용: (종목×거래소×period)의 minute_of_day → {avg, days} 맵.
+ */
+export async function getAvgSeries(
+  stockCode: string,
+  exchange: GapExchange,
+  period: number,
+): Promise<Map<number, { avg: number; days: number }>> {
+  const out = new Map<number, { avg: number; days: number }>();
+  const { data, error } = await supabase
+    .from('price_gap_minute_avg')
+    .select('minute_of_day, avg_close_gap, available_days')
+    .eq('stock_code', stockCode)
+    .eq('exchange', exchange)
+    .eq('period', period);
+  if (error) {
+    logger.error('price_gap_minute_avg(avgSeries) 조회 실패:', error.message);
+    throw error;
+  }
+  for (const r of data ?? []) {
+    out.set(r.minute_of_day as number, {
+      avg: r.avg_close_gap as number,
+      days: r.available_days as number,
+    });
+  }
+  return out;
 }

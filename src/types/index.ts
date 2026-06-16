@@ -221,6 +221,32 @@ export interface GapSnapshotRow {
   ts: number; // 이 값이 산출된 시각 (epoch ms)
 }
 
+/**
+ * /latest 응답 행 = 실시간 스냅샷 + 과거평균(사전집계) 결합.
+ *   pastAvgGap   : 전체 과거(All) 중 "현재 KST 분"의 close_gap 평균(%). 데이터 없으면 null.
+ *   gapVsPastAvg : gap - pastAvgGap (percentage point). 둘 중 하나라도 null이면 null.
+ */
+export interface GapLatestRow extends GapSnapshotRow {
+  pastAvgGap: number | null;
+  gapVsPastAvg: number | null;
+}
+
+/** /chart 응답의 candle 1개 = OHLC + 선택 period 평균(avgGap). */
+export interface GapChartCandle {
+  timestamp_minute: string;
+  stock_code: string;
+  stock_name: string;
+  exchange: GapExchange;
+  open_gap: number;
+  high_gap: number;
+  low_gap: number;
+  close_gap: number;
+  avg_gap: number | null; // 1분 누산 평균(기존 저장값) — 차트 라인은 close 사용
+  minuteOfDay: number; // KST hour*60+min (평균선 매칭 키)
+  avgGap: number | null; // ★선택 period 같은 분 close_gap 평균(%). 데이터 없으면 null.
+  availableDays: number | null; // ★해당 분 평균에 쓰인 거래일 수. period보다 적으면 "available data only"
+}
+
 /** price_gap_ohlc 테이블 1행 (1분 OHLC 집계) */
 export interface GapOhlcRow {
   timestamp_minute: string; // ISO (분 경계)
@@ -232,6 +258,21 @@ export interface GapOhlcRow {
   low_gap: number;
   close_gap: number;
   avg_gap: number | null; // 저장만, 차트는 close 사용
+}
+
+/**
+ * price_gap_minute_avg 테이블 1행 (분당 평균 갭 사전집계).
+ * (종목×거래소×minute_of_day×period)별 close_gap 평균.
+ *   period=0  → 전체 과거(All), 테이블 Past Avg Gap용
+ *   period=N  → 최근 N거래일(3/5/10/20/30), 차트 평균선용
+ */
+export interface GapMinuteAvgRow {
+  stock_code: string;
+  exchange: GapExchange;
+  minute_of_day: number; // KST hour*60+min (장중 540~935)
+  period: number; // 0=All / 3 / 5 / 10 / 20 / 30
+  avg_close_gap: number; // 해당 (분,기간)의 close_gap 평균(%)
+  available_days: number; // 실제 평균에 쓰인 distinct 거래일 수
 }
 
 // ===== Feature Flags (기능 노출 토글) =====
