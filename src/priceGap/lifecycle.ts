@@ -17,7 +17,7 @@ import { startKisFeed, stopKisFeed } from './kisFeed';
 import { startBybitFeed, stopBybitFeed } from './bybitFeed';
 import { startBinanceFeed, stopBinanceFeed } from './binanceFeed';
 import { onTick, flushAll, resetOhlc } from './ohlcWorker';
-import { tick, reset as resetStore } from './store';
+import { tick, reset as resetStore, captureClosingSnapshot } from './store';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 
@@ -52,6 +52,10 @@ export function stopPriceGap(): void {
     clearInterval(tickTimer);
     tickTimer = null;
   }
+
+  // 장 종료 시점 스냅샷 보존 — 마감 후에도 /latest가 마지막 행(가격/갭)을 고정 응답한다.
+  // resetStore 전에 캡처해야 최신값이 살아 있다(문서 §2 값 유지 요구).
+  captureClosingSnapshot();
 
   // 진행 중 분봉 보존 (정상 종료 한정 — 크래시엔 무력)
   flushAll();
