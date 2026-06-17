@@ -253,7 +253,7 @@ export async function backfillDay(ymd: string, dryRun = false): Promise<Backfill
         const fxPrice = fxMap.get(mk);
         const exPrice = exMap.get(mk);
         if (fxPrice === undefined || exPrice === undefined) continue;
-        const { gap } = computeGap(krPrice, fxPrice, exPrice);
+        const { usdRef, gap } = computeGap(krPrice, fxPrice, exPrice);
         if (gap === null) continue;
 
         matched++;
@@ -269,6 +269,10 @@ export async function backfillDay(ymd: string, dryRun = false): Promise<Backfill
             low_gap: gap,
             close_gap: gap,
             avg_gap: gap,
+            // 분봉 close 원시가격도 보존(재배포 폴백 가격 복원용). 세 소스 분봉 close.
+            close_kr_price: krPrice,
+            close_usd_ref: usdRef,
+            close_ex_price: exPrice,
           });
           upserted++;
         }
