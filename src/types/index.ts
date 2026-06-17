@@ -258,6 +258,10 @@ export interface GapOhlcRow {
   low_gap: number;
   close_gap: number;
   avg_gap: number | null; // 저장만, 차트는 close 사용
+  // close 시점 원시가격 (장 종료 후 재배포 폴백의 가격 복원용, 0011). 구 행/일부 백필은 null.
+  close_kr_price?: number | null; // 원화 체결가 (KR Price)
+  close_usd_ref?: number | null; // USD Reference (= krPrice / usdtKrw)
+  close_ex_price?: number | null; // perp 가격 USDT (Binance/Bybit Price)
 }
 
 /**

@@ -29,6 +29,10 @@ interface Accumulator {
   close: number;
   sum: number;
   count: number;
+  // close 시점(분 마지막 tick) 원시가격 — 재배포 폴백의 가격 복원용. gap과 함께 갱신.
+  closeKrPrice: number | null;
+  closeUsdRef: number | null;
+  closeExPrice: number | null;
 }
 
 /** `${exchange}:${code}` → 진행 중 누산기 */
@@ -55,6 +59,9 @@ function flush(a: Accumulator): void {
     low_gap: a.low,
     close_gap: a.close,
     avg_gap: a.count > 0 ? a.sum / a.count : null,
+    close_kr_price: a.closeKrPrice,
+    close_usd_ref: a.closeUsdRef,
+    close_ex_price: a.closeExPrice,
   }).catch((err) => {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error(`[OHLC] flush 실패 (${a.exchange}:${a.stockCode} @${iso}): ${msg}`);
@@ -85,6 +92,9 @@ export function onTick(ticks: GapTick[]): void {
         close: t.gap,
         sum: t.gap,
         count: 1,
+        closeKrPrice: t.krPrice,
+        closeUsdRef: t.usdRef,
+        closeExPrice: t.exPrice,
       });
       continue;
     }
@@ -95,6 +105,10 @@ export function onTick(ticks: GapTick[]): void {
     cur.close = t.gap;
     cur.sum += t.gap;
     cur.count += 1;
+    // close 가격도 마지막 tick값으로 갱신(gap과 동기)
+    cur.closeKrPrice = t.krPrice;
+    cur.closeUsdRef = t.usdRef;
+    cur.closeExPrice = t.exPrice;
   }
 }
 
