@@ -11,14 +11,14 @@
  * 제한국가 차단은 프론트(geo) 책임. 응답 포맷은 {success, code, data} (news.routes 일관).
  */
 import { Router } from 'express';
-import { snapshotLatest, snapshotDelayed, currentFx } from '../priceGap/store';
+import { snapshotLatest, snapshotDelayed, currentFx, closingSnapshotRows } from '../priceGap/store';
 import { isPriceGapRunning } from '../priceGap/lifecycle';
-import { getOhlc, getPastAvgByMinute, getAvgSeries } from '../services/priceGap.service';
+import { getOhlc, getPastAvgByMinute, getAvgSeries, closingRowsFromOhlc } from '../services/priceGap.service';
 import { isPriceGapActive } from '../priceGap/holiday';
 import { perpSymbolOf, EXCHANGES } from '../priceGap/symbols';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
-import type { GapExchange, GapLatestRow, GapChartCandle } from '../types';
+import type { GapExchange, GapLatestRow, GapChartCandle, GapSnapshotRow } from '../types';
 
 export const priceGapRouter = Router();
 
@@ -71,11 +71,26 @@ priceGapRouter.get('/latest', async (req, res) => {
   try {
     const premium = isPremium(req.query.tier);
     const now = Date.now();
-    const marketOpen = isPriceGapActive() && isPriceGapRunning();
+    const running = isPriceGapRunning();
+    const marketOpen = isPriceGapActive() && running;
 
-    let snapRows;
+    let snapRows: GapSnapshotRow[];
     let warmingUp = false;
-    if (premium) {
+    if (!running) {
+      // 장 종료 — 수집 중지로 라이브 스냅샷(tick/buffer)이 비어 있다. 종료 시점 보존
+      // 스냅샷을 그대로 응답해 가격/갭을 고정 표시한다(usdtKrw만 아래에서 실시간 갱신).
+      // tier 무관 동일 스냅샷(종료 후 Basic 지연 노출은 의미 없음).
+      snapRows = closingSnapshotRows();
+      // 메모리 스냅샷이 비면(장 마감 후 재배포) DB OHLC로 폴백 복원. gap만 살리고 가격은 null.
+      if (snapRows.length === 0) {
+        try {
+          snapRows = await closingRowsFromOhlc(todaySessionStartIso(now));
+        } catch (e) {
+          logger.warn(`[price-gap/latest] 종료 스냅샷 DB 폴백 실패(빈 rows로 진행): ${e instanceof Error ? e.message : String(e)}`);
+          snapRows = [];
+        }
+      }
+    } else if (premium) {
       snapRows = snapshotLatest(now);
     } else {
       const delayed = snapshotDelayed(env.priceGapBasicDelayMs, now);

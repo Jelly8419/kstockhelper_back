@@ -40,6 +40,13 @@ const latestKr = new Map<string, PricePoint>();
 const latestEx = new Map<string, PricePoint>();
 /** USDT/KRW (FX 폴러). 단일값. */
 let latestFx: PricePoint | null = null;
+/**
+ * 장 종료 시점 스냅샷 (latest 응답 "값 고정"용). stop 직전 마지막 tick 결과를 보존해,
+ * 장 마감 후에도 /latest가 종료 시점 행(krPrice/usdRef/exPrice/gap)을 그대로 돌려준다.
+ * 환율(usdtKrw)만 currentFx로 실시간 갱신되고, 이 스냅샷은 종료 시점에 고정된다(문서 §2.1 A안).
+ * resetStore는 이를 비우지 않는다 — 다음 개장의 captureClosingSnapshot이 덮어쓴다.
+ */
+let closingSnapshot: GapSnapshotRow[] = [];
 
 // ── 갭 히스토리 10분 buffer ───────────────────────────────────────────────────
 /** `${exchange}:${code}` → 시간순 GapTick[] (오래된 것이 앞) */
@@ -154,6 +161,50 @@ export function snapshotLatest(now: number = Date.now()): GapSnapshotRow[] {
 }
 
 /**
+ * 장 종료 시점 스냅샷 캡처 (lifecycle.stop에서 tick 중지 직전 호출).
+ *
+ * tick()과 달리 stale 판정을 적용하지 않는다 — stop은 15:40에 호출되지만 정규장은
+ * 15:30 마감이라 KR 체결이 이미 ~10분 끊겨 stale이다. tick 기준으로 캡처하면 krPrice=null
+ * → gap=null이 저장돼 "종료 시점 값 고정" 요구가 깨진다. 따라서 각 소스의 마지막 원본값을
+ * 그대로 써서 종료 직전 마지막 알려진 가격/갭을 보존한다.
+ *
+ * 한쪽 소스라도 한 번도 값을 받은 적 없으면(콜드스타트 직후 stop 등) 그 행은 null이 섞일 수
+ * 있다. 전 행이 비면 직전 스냅샷을 유지한다(빈 캡처로 기존 보존값을 날리지 않음).
+ */
+export function captureClosingSnapshot(): void {
+  const fxPrice = latestFx?.price ?? null;
+  const rows: GapSnapshotRow[] = [];
+  let anyData = false;
+
+  for (const s of GAP_STOCKS) {
+    const krPrice = latestKr.get(s.code)?.price ?? null;
+    for (const exchange of EXCHANGES) {
+      const exPrice = latestEx.get(exKey(exchange, s.code))?.price ?? null;
+      const { usdRef, gap } = computeGap(krPrice, fxPrice, exPrice);
+      const last = lastTsOf(s.code, exchange);
+      if (krPrice !== null || exPrice !== null) anyData = true;
+      rows.push(
+        toRow({ ts: last, stockCode: s.code, exchange, krPrice, usdRef, exPrice, gap }),
+      );
+    }
+  }
+
+  if (anyData) closingSnapshot = rows;
+}
+
+/** 종목·거래소의 마지막 수신 ts (KR/perp 중 더 최신). 스냅샷 행의 ts로 사용. */
+function lastTsOf(code: string, exchange: GapExchange): number {
+  const krTs = latestKr.get(code)?.ts ?? 0;
+  const exTs = latestEx.get(exKey(exchange, code))?.ts ?? 0;
+  return Math.max(krTs, exTs) || Date.now();
+}
+
+/** 보존된 장 종료 시점 스냅샷 (latest "값 고정" 응답용). 없으면 빈 배열. */
+export function closingSnapshotRows(): GapSnapshotRow[] {
+  return closingSnapshot;
+}
+
+/**
  * Basic: T-delayMs 시점에 가장 가까운(이하) 갭 스냅샷.
  * buffer가 아직 delay만큼 안 찼으면 warmingUp=true.
  */
@@ -227,8 +278,9 @@ export function reset(): void {
   gapHistory.clear();
 }
 
-/** 전체 상태 초기화 (테스트 전용 — FX 포함 완전 리셋). */
+/** 전체 상태 초기화 (테스트 전용 — FX·종료 스냅샷 포함 완전 리셋). */
 export function resetAll(): void {
   reset();
   latestFx = null;
+  closingSnapshot = [];
 }
