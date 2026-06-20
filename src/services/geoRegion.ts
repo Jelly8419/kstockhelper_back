@@ -116,11 +116,42 @@ export interface RegionDecision {
 }
 
 /**
- * 구독 정책상 "제한국가"인지 판정한다(= PayPal 구독 허용 대상).
+ * 구독 제한 여부의 SSOT 결정 — 프론트(BFF)가 전달한 restricted를 우선 신뢰하고,
+ * 없으면 IP 기반 geoip 폴백으로 판정한다.
+ *
+ * 배경: 프론트는 Next.js BFF(Vercel) → fetch로 백엔드를 호출하므로, 백엔드가 보는
+ * 소켓 IP는 유저가 아니라 Vercel 데이터센터 IP다. 따라서 IP 기반 재검증은 BFF 구조에서
+ * 무의미하다. 대신 프론트 미들웨어가 Vercel geo로 판별한 최종 결론(isRestrictedForSubscription:
+ * blocklist + KR 화이트리스트 + unknown→restricted)을 신뢰한다.
+ *
+ * 신뢰 모델은 기존 공개 API(bybit/binance verify)와 동일하다(BFF가 세션 userId를 평문 전달).
+ * restricted 위조는 유저에게 이득이 없다(제한국가 위장 = 본인이 결제하게 되는 것).
+ *
+ * @param explicitRestricted 프론트가 보낸 값. boolean이면 그대로 신뢰. undefined면 IP 폴백.
+ */
+export function resolveRestricted(
+  req: Request,
+  explicitRestricted: unknown,
+): RegionDecision {
+  if (typeof explicitRestricted === 'boolean') {
+    return {
+      restrictedForSubscription: explicitRestricted,
+      country: null, // 프론트 신뢰 모드에서는 country를 별도로 받지 않는다.
+      ip: requestIp(req),
+    };
+  }
+  // 폴백: 직접 호출(BFF 우회)/하위호환 — IP 기반 geoip 판정.
+  return decideRegion(req);
+}
+
+/**
+ * (IP 기반 폴백) 구독 정책상 "제한국가"인지 판정한다.
  * 프론트 isRestrictedForSubscription과 동일한 결론을 내도록 설계:
  *  - blocklist 국가 → 제한국가(단, KR 화이트리스트 IP는 제외).
  *  - country 판별 실패(unknown) → 제한국가(안전 기본값).
  *  - 그 외(허용국가) → 비제한 → 구독 거부.
+ * 주의: BFF(Vercel) 경유 호출에서는 소켓 IP가 유저가 아니므로 정확하지 않다.
+ *       프론트가 restricted를 보내는 경우 resolveRestricted가 그 값을 우선한다.
  */
 export function decideRegion(req: Request): RegionDecision {
   const ip = requestIp(req);

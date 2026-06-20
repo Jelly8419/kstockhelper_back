@@ -1,6 +1,6 @@
 import { Router, raw } from 'express';
 import { logger } from '../utils/logger';
-import { decideRegion } from '../services/geoRegion';
+import { resolveRestricted } from '../services/geoRegion';
 import {
   createSubscription as paypalCreate,
   cancelSubscription as paypalCancel,
@@ -25,7 +25,7 @@ type Envelope = { success: boolean; code: string; message: string; [k: string]: 
  * 제한국가 재검증 → PayPal 구독 생성 → approvalUrl 반환.
  */
 subscriptionRouter.post('/create', async (req, res) => {
-  const { userId } = req.body ?? {};
+  const { userId, restricted } = req.body ?? {};
   if (typeof userId !== 'string' || !userId.trim()) {
     return res.status(400).json({
       success: false,
@@ -36,10 +36,11 @@ subscriptionRouter.post('/create', async (req, res) => {
 
   try {
     // 1) 지역 재검증 — 제한국가만 구독 허용(요청서 §5).
-    const region = decideRegion(req);
+    //    프론트(BFF)가 보낸 restricted를 우선 신뢰. BFF 경유라 백엔드 소켓 IP는 유저가 아님.
+    const region = resolveRestricted(req, restricted);
     if (!region.restrictedForSubscription) {
       logger.info(
-        `구독 생성 거부(허용국가) — userId=${userId}, country=${region.country}, ip=${region.ip}`,
+        `구독 생성 거부(허용국가) — userId=${userId}, restricted=${String(restricted)}, country=${region.country}, ip=${region.ip}`,
       );
       return res.status(200).json({
         success: false,
