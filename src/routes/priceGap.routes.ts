@@ -66,6 +66,15 @@ function todaySessionStartIso(nowMs: number): string {
   return new Date(Date.UTC(y, mo, d, 0, 0, 0)).toISOString();
 }
 
+/**
+ * 장 종료 후 DB 폴백의 하한(ISO). "마지막 거래일 종가"를 복원하되,
+ * 너무 오래된(수집 끊긴) 데이터를 최신인 척 노출하지 않도록 7일 상한을 둔다.
+ * 주말/연휴엔 오늘 세션 데이터가 없으므로 7일 전까지 거슬러 종목별 가장 최근 분봉을 종가로 쓴다.
+ */
+function closingFallbackFromIso(nowMs: number): string {
+  return new Date(nowMs - 7 * 24 * 3_600_000).toISOString();
+}
+
 // ── GET /latest ───────────────────────────────────────────────────────────────
 priceGapRouter.get('/latest', async (req, res) => {
   try {
@@ -84,7 +93,7 @@ priceGapRouter.get('/latest', async (req, res) => {
       // 메모리 스냅샷이 비면(장 마감 후 재배포) DB OHLC로 폴백 복원. gap만 살리고 가격은 null.
       if (snapRows.length === 0) {
         try {
-          snapRows = await closingRowsFromOhlc(todaySessionStartIso(now));
+          snapRows = await closingRowsFromOhlc(closingFallbackFromIso(now));
         } catch (e) {
           logger.warn(`[price-gap/latest] 종료 스냅샷 DB 폴백 실패(빈 rows로 진행): ${e instanceof Error ? e.message : String(e)}`);
           snapRows = [];
