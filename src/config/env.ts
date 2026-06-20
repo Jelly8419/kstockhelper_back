@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { logger } from '../utils/logger';
 
 dotenv.config();
 
@@ -82,4 +83,62 @@ export const env = {
    * (장외엔 KR 체결가가 없어 gap=null이고 불필요한 WS 연결을 유지하게 됨).
    */
   priceGapForceStart: flag('PRICE_GAP_FORCE_START', false),
+
+  /**
+   * PayPal 구독 결제 (제한국가 Premium). 기본 true.
+   * 로컬에서 PayPal 키 없이 기동하려면 false로 끈다(/api/subscription/* 비활성).
+   */
+  enableSubscription: flag('ENABLE_SUBSCRIPTION'),
+  /** PayPal 환경: 'sandbox' | 'live'. API base URL을 결정한다. */
+  paypalMode: (process.env.PAYPAL_MODE === 'live' ? 'live' : 'sandbox') as 'sandbox' | 'live',
+  /** PayPal REST 앱 client id (구독 기능 활성 시 필수). */
+  paypalClientId: process.env.PAYPAL_CLIENT_ID || '',
+  /** PayPal REST 앱 secret (구독 기능 활성 시 필수). */
+  paypalClientSecret: process.env.PAYPAL_CLIENT_SECRET || '',
+  /** Trial($1/1달)+Regular($4.9/월) 빌링 플랜 ID (대시보드/스크립트로 사전 생성). */
+  paypalPlanId: process.env.PAYPAL_PLAN_ID || '',
+  /** Webhook 서명 검증용 PayPal Webhook ID (대시보드에서 발급). */
+  paypalWebhookId: process.env.PAYPAL_WEBHOOK_ID || '',
+  /** 결제 승인 후 유저가 복귀할 프론트 URL (구독 생성 시 PayPal에 전달). */
+  subscriptionReturnUrl:
+    process.env.SUBSCRIPTION_RETURN_URL ||
+    `${process.env.FRONTEND_URL || 'https://kstockhelper.com'}/subscription/success`,
+  /** 결제 취소 시 유저가 복귀할 프론트 URL. */
+  subscriptionCancelUrl:
+    process.env.SUBSCRIPTION_CANCEL_URL ||
+    `${process.env.FRONTEND_URL || 'https://kstockhelper.com'}/subscription`,
 };
+
+/**
+ * 구독 기능이 켜진 경우 PayPal 필수 환경변수가 모두 채워졌는지 검증한다.
+ * 기동 시 1회 호출(app/scheduler)해 누락된 채로 배포되는 것을 막는다.
+ */
+export function assertSubscriptionEnv(): void {
+  if (!env.enableSubscription) return;
+
+  // 구독 생성/해지에 필수 — 없으면 기동을 막는다.
+  const missing = (
+    [
+      ['PAYPAL_CLIENT_ID', env.paypalClientId],
+      ['PAYPAL_CLIENT_SECRET', env.paypalClientSecret],
+      ['PAYPAL_PLAN_ID', env.paypalPlanId],
+    ] as const
+  )
+    .filter(([, v]) => !v)
+    .map(([k]) => k);
+  if (missing.length > 0) {
+    throw new Error(
+      `구독 기능(ENABLE_SUBSCRIPTION)이 켜져 있으나 다음 환경변수가 비어 있습니다: ${missing.join(', ')}. ` +
+        `.env를 확인하거나 ENABLE_SUBSCRIPTION=false로 끄세요.`,
+    );
+  }
+
+  // Webhook ID는 등록 절차상 서버를 먼저 띄워야 받을 수 있어, 없으면 기동은 허용하되 경고한다.
+  // 없는 동안 webhook 서명 검증은 항상 실패(=이벤트 무시)하므로 Premium이 잘못 켜질 위험은 없다.
+  if (!env.paypalWebhookId) {
+    logger.warn(
+      'PAYPAL_WEBHOOK_ID가 비어 있습니다 — webhook 수신 이벤트가 모두 무시됩니다(서명검증 실패). ' +
+        'PayPal 대시보드에서 webhook 등록 후 .env에 기입하고 재기동하세요.',
+    );
+  }
+}
