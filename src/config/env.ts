@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { logger } from '../utils/logger';
 
 dotenv.config();
 
@@ -114,12 +115,13 @@ export const env = {
  */
 export function assertSubscriptionEnv(): void {
   if (!env.enableSubscription) return;
+
+  // 구독 생성/해지에 필수 — 없으면 기동을 막는다.
   const missing = (
     [
       ['PAYPAL_CLIENT_ID', env.paypalClientId],
       ['PAYPAL_CLIENT_SECRET', env.paypalClientSecret],
       ['PAYPAL_PLAN_ID', env.paypalPlanId],
-      ['PAYPAL_WEBHOOK_ID', env.paypalWebhookId],
     ] as const
   )
     .filter(([, v]) => !v)
@@ -128,6 +130,15 @@ export function assertSubscriptionEnv(): void {
     throw new Error(
       `구독 기능(ENABLE_SUBSCRIPTION)이 켜져 있으나 다음 환경변수가 비어 있습니다: ${missing.join(', ')}. ` +
         `.env를 확인하거나 ENABLE_SUBSCRIPTION=false로 끄세요.`,
+    );
+  }
+
+  // Webhook ID는 등록 절차상 서버를 먼저 띄워야 받을 수 있어, 없으면 기동은 허용하되 경고한다.
+  // 없는 동안 webhook 서명 검증은 항상 실패(=이벤트 무시)하므로 Premium이 잘못 켜질 위험은 없다.
+  if (!env.paypalWebhookId) {
+    logger.warn(
+      'PAYPAL_WEBHOOK_ID가 비어 있습니다 — webhook 수신 이벤트가 모두 무시됩니다(서명검증 실패). ' +
+        'PayPal 대시보드에서 webhook 등록 후 .env에 기입하고 재기동하세요.',
     );
   }
 }
