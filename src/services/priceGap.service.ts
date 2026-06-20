@@ -55,6 +55,26 @@ export async function getOhlc(q: ChartQuery): Promise<GapOhlcRow[]> {
   return (data ?? []) as GapOhlcRow[];
 }
 
+// 마지막 거래일 캔들 범위 산정용: 해당 종목/거래소 최신 분봉 timestamp(ms). 없으면 null.
+export async function latestOhlcTs(
+  stockCode: string,
+  exchange: GapExchange,
+): Promise<number | null> {
+  const { data, error } = await supabase
+    .from('price_gap_ohlc')
+    .select('timestamp_minute')
+    .eq('stock_code', stockCode)
+    .eq('exchange', exchange)
+    .order('timestamp_minute', { ascending: false })
+    .limit(1);
+  if (error) {
+    logger.error('price_gap_ohlc latest 조회 실패:', error.message);
+    throw error;
+  }
+  const ts = data?.[0]?.timestamp_minute as string | undefined;
+  return ts ? new Date(ts).getTime() : null;
+}
+
 // ── price_gap_minute_avg (분당 평균 사전집계) ──────────────────────────────────
 
 /**

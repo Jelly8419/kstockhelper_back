@@ -13,7 +13,7 @@
 import { Router } from 'express';
 import { snapshotLatest, snapshotDelayed, currentFx, closingSnapshotRows } from '../priceGap/store';
 import { isPriceGapRunning } from '../priceGap/lifecycle';
-import { getOhlc, getPastAvgByMinute, getAvgSeries, closingRowsFromOhlc } from '../services/priceGap.service';
+import { getOhlc, getPastAvgByMinute, getAvgSeries, closingRowsFromOhlc, latestOhlcTs } from '../services/priceGap.service';
 import { isPriceGapActive } from '../priceGap/holiday';
 import { perpSymbolOf, EXCHANGES } from '../priceGap/symbols';
 import { env } from '../config/env';
@@ -73,6 +73,16 @@ function todaySessionStartIso(nowMs: number): string {
  */
 function closingFallbackFromIso(nowMs: number): string {
   return new Date(nowMs - 7 * 24 * 3_600_000).toISOString();
+}
+
+// 주어진 ms가 속한 KST 날짜의 세션 범위(09:00 KST ~ 다음날 09:00 KST) ISO. 마지막 거래일 차트용.
+function sessionRangeOf(ms: number): { fromIso: string; toIso: string } {
+  const kst = new Date(ms + 9 * 3_600_000);
+  const from = Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate(), 0, 0, 0);
+  return {
+    fromIso: new Date(from).toISOString(),
+    toIso: new Date(from + 24 * 3_600_000).toISOString(),
+  };
 }
 
 // ── GET /latest ───────────────────────────────────────────────────────────────
@@ -178,10 +188,22 @@ priceGapRouter.get('/chart', async (req, res) => {
   try {
     const premium = isPremium(req.query.tier);
     const now = Date.now();
-    // Basic은 now-10분 이하 분봉만 노출(지연). Premium은 컷 없음.
-    const toIso = premium ? undefined : new Date(now - env.priceGapBasicDelayMs).toISOString();
-    // 당일 캔들만(§7.11 X축 당일 기준): 오늘 09:00 KST 이후 분봉.
-    const fromIso = todaySessionStartIso(now);
+    // 마지막 거래일 캔들 범위(주말/휴장일 대응): 최신 분봉이 속한 거래일 세션을 X축으로.
+    // 데이터가 전혀 없으면 오늘 세션으로 폴백.
+    const latestTs = await latestOhlcTs(stock, exchange).catch(() => null);
+    const session =
+      latestTs !== null
+        ? sessionRangeOf(latestTs)
+        : { fromIso: todaySessionStartIso(now), toIso: undefined as string | undefined };
+    const fromIso = session.fromIso;
+    // Basic은 now-10분 이하만 노출(지연). 세션 종료와 지연컷 중 더 이른 쪽.
+    const basicCut = premium ? undefined : new Date(now - env.priceGapBasicDelayMs).toISOString();
+    const toIso =
+      session.toIso && basicCut
+        ? session.toIso < basicCut
+          ? session.toIso
+          : basicCut
+        : session.toIso ?? basicCut;
 
     // OHLC와 period 평균선을 병렬 조회.
     const [ohlc, avgSeries] = await Promise.all([
