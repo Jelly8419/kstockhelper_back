@@ -3,7 +3,7 @@ import type { NextFunction, Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import type { CorsOptions } from 'cors';
-import { env } from './config/env';
+import { env, assertSubscriptionEnv } from './config/env';
 import { logger } from './utils/logger';
 import { apiRateLimiter } from './middleware/rateLimit';
 import { internalGuard } from './middleware/internalGuard';
@@ -13,6 +13,7 @@ import { adminRouter } from './routes/admin.routes';
 import { newsRouter } from './routes/news.routes';
 import { priceGapRouter } from './routes/priceGap.routes';
 import { featureFlagsRouter } from './routes/featureFlags.routes';
+import { subscriptionRouter } from './routes/subscription.routes';
 
 export function createApp() {
   const app = express();
@@ -43,7 +44,12 @@ export function createApp() {
   app.use(cors(corsOptions));
   app.options('*', cors(corsOptions)); // preflight 명시 처리
 
-  app.use(express.json());
+  // 글로벌 JSON 파서 — 단, PayPal Webhook은 서명 검증을 위해 원문(raw) body가 필요하므로
+  // 해당 경로는 건너뛴다(라우트 내부에서 express.raw로 직접 파싱).
+  app.use((req, res, next) => {
+    if (req.path === '/api/subscription/webhook') return next();
+    return express.json()(req, res, next);
+  });
 
   app.get('/health', (_req, res) => {
     res.json({ status: 'ok', time: new Date().toISOString() });
@@ -56,6 +62,10 @@ export function createApp() {
   app.use('/api/news', newsRouter);
   app.use('/api/price-gap', priceGapRouter);
   app.use('/api/feature-flags', featureFlagsRouter);
+  if (env.enableSubscription) {
+    assertSubscriptionEnv(); // PayPal 필수 env 누락 시 기동 차단
+    app.use('/api/subscription', subscriptionRouter);
+  }
 
   // 내부 관리자 API — 공유 시크릿 헤더 게이트 통과 후에만 라우터 진입
   app.use('/internal/admin', internalGuard, adminRouter);
