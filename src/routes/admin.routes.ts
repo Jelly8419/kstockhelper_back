@@ -22,6 +22,12 @@ import {
   getHotNews,
 } from '../services/hotNews.service';
 import { getAllFlags, setFlag, isKnownFlagKey } from '../services/featureFlags.service';
+import {
+  getDau,
+  getFunnelDaily,
+  getFunnelTotal,
+  getEventCounts,
+} from '../services/analytics.service';
 import { logger } from '../utils/logger';
 import type {
   AdminLoginResponse,
@@ -34,7 +40,18 @@ import type {
   HotNewsStatusPatch,
   HotNewsListResponse,
   HotNewsCreateResponse,
+  AnalyticsDauResponse,
+  AnalyticsFunnelResponse,
+  AnalyticsFunnelTotalResponse,
+  AnalyticsEventCountResponse,
 } from '../types';
+
+/** 쿼리에서 from/to(YYYY-MM-DD) 추출. 문자열 아닌 값은 undefined로. */
+function parseRange(query: Record<string, unknown>): { from?: string; to?: string } {
+  const from = typeof query.from === 'string' ? query.from : undefined;
+  const to = typeof query.to === 'string' ? query.to : undefined;
+  return { from, to };
+}
 
 export const adminRouter = Router();
 
@@ -479,6 +496,73 @@ adminRouter.patch('/feature-flags', async (req, res) => {
     return res.status(500).json({
       success: false,
       message: '기능 설정을 변경하지 못했습니다. 다시 시도해 주세요.',
+    } satisfies AdminSimpleResponse);
+  }
+});
+
+// ===== 애널리틱스 통계 (콘솔 이벤트 통계 — events 요청서 §3) =====
+//
+// 전부 읽기 전용 GET. 0007_events.sql의 분석 뷰 3종을 service_role로 select 한다.
+// from/to(YYYY-MM-DD) query 선택 — 미지정 시 최근 30일. day는 UTC 기준(프론트가 KST 변환).
+
+/**
+ * GET /internal/admin/analytics/dau
+ * 일별 활성(로그인) 유저 + 총 이벤트량. analytics_dau 뷰.
+ */
+adminRouter.get('/analytics/dau', async (req, res) => {
+  try {
+    const rows = await getDau(parseRange(req.query));
+    return res.status(200).json({ rows } satisfies AnalyticsDauResponse);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('analytics dau 조회 실패:', msg);
+    return res.status(500).json({
+      success: false,
+      message: '통계를 불러오지 못했습니다. 다시 시도해 주세요.',
+    } satisfies AdminSimpleResponse);
+  }
+});
+
+/**
+ * GET /internal/admin/analytics/funnel
+ * 전환 퍼널 단계별 카운트. analytics_funnel_daily 뷰.
+ * ?mode=total 이면 일별 대신 기간 합계 1건({ total }).
+ */
+adminRouter.get('/analytics/funnel', async (req, res) => {
+  try {
+    const range = parseRange(req.query);
+    if (req.query.mode === 'total') {
+      const total = await getFunnelTotal(range);
+      return res.status(200).json({ total } satisfies AnalyticsFunnelTotalResponse);
+    }
+    const rows = await getFunnelDaily(range);
+    return res.status(200).json({ rows } satisfies AnalyticsFunnelResponse);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('analytics funnel 조회 실패:', msg);
+    return res.status(500).json({
+      success: false,
+      message: '통계를 불러오지 못했습니다. 다시 시도해 주세요.',
+    } satisfies AdminSimpleResponse);
+  }
+});
+
+/**
+ * GET /internal/admin/analytics/events
+ * 이벤트별 일 카운트. analytics_event_counts 뷰.
+ * ?eventName=... 이면 해당 이벤트만 필터.
+ */
+adminRouter.get('/analytics/events', async (req, res) => {
+  try {
+    const eventName = typeof req.query.eventName === 'string' ? req.query.eventName : undefined;
+    const rows = await getEventCounts(parseRange(req.query), eventName);
+    return res.status(200).json({ rows } satisfies AnalyticsEventCountResponse);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('analytics events 조회 실패:', msg);
+    return res.status(500).json({
+      success: false,
+      message: '통계를 불러오지 못했습니다. 다시 시도해 주세요.',
     } satisfies AdminSimpleResponse);
   }
 });

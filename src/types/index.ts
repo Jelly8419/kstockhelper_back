@@ -512,6 +512,50 @@ export interface AdminJwtPayload {
   adminId: string; // admins.admin_id
 }
 
+// ===== 애널리틱스 통계 (콘솔 이벤트 통계 API — events 요청서) =====
+// 응답 day는 analytics_* 뷰의 date_trunc('day', created_at) = UTC 기준 timestamptz.
+// 일자 KST 변환은 프론트에서 처리(회신서 §타임존).
+
+/** GET /internal/admin/analytics/dau — analytics_dau 뷰 */
+export interface AnalyticsDauRow {
+  day: string;
+  loggedInUsers: number;
+  totalEvents: number;
+}
+export interface AnalyticsDauResponse {
+  rows: AnalyticsDauRow[];
+}
+
+/** GET /internal/admin/analytics/funnel — analytics_funnel_daily 뷰 */
+export interface AnalyticsFunnelRow {
+  day: string;
+  visited: number;
+  signedUp: number;
+  gapViewed: number;
+  premiumBlocked: number;
+  subPageViewed: number;
+  subscribeClicked: number;
+  activated: number;
+}
+/** mode=total 합계 행(일자 없음). day 컬럼만 빠진 동일 단계. */
+export type AnalyticsFunnelTotal = Omit<AnalyticsFunnelRow, 'day'>;
+export interface AnalyticsFunnelResponse {
+  rows: AnalyticsFunnelRow[];
+}
+export interface AnalyticsFunnelTotalResponse {
+  total: AnalyticsFunnelTotal;
+}
+
+/** GET /internal/admin/analytics/events — analytics_event_counts 뷰 */
+export interface AnalyticsEventCountRow {
+  day: string;
+  eventName: string;
+  count: number;
+}
+export interface AnalyticsEventCountResponse {
+  rows: AnalyticsEventCountRow[];
+}
+
 // ===== 프리미엄 회원 신청 관리 =====
 
 /** 신청 건 상태 (applications.status, PRD 4.2) */
