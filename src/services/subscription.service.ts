@@ -90,6 +90,40 @@ export interface ApplyEventResult {
 }
 
 /**
+ * 애널리틱스 events 테이블에 분석 이벤트 1건을 적재한다(요청서 이벤트로그 §3).
+ * service_role 클라이언트라 RLS(INSERT only)를 우회한다.
+ *
+ * 결제 본 로직과 격리(fire-and-forget): 이 함수는 절대 throw하지 않는다.
+ * 적재 실패는 경고 로그만 남기고 삼킨다 — 분석 실패가 결제 처리를 막아선 안 된다(§3.2).
+ */
+export async function logAnalyticsEvent(input: {
+  eventName: string;
+  userId?: string | null;
+  membershipStatus?: string | null;
+  properties?: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    const { error } = await supabase.from('events').insert({
+      event_name: input.eventName,
+      user_id: input.userId ?? null,
+      // 결제 유저는 제한국가(restricted) 영역. 백엔드 발생이라 device/page는 미상.
+      country_group: 'restricted',
+      membership_status: input.membershipStatus ?? null,
+      properties: { source: 'paypal_webhook', ...(input.properties ?? {}) },
+    });
+    if (error) {
+      logger.warn(`events 적재 실패(무시) — event=${input.eventName}: ${error.message}`);
+    }
+  } catch (err) {
+    logger.warn(
+      `events 적재 예외(무시) — event=${input.eventName}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+}
+
+/**
  * Webhook 핸들러용 — apply_subscription_event RPC를 호출해 tier/subscription_*를
  * 원자적으로 갱신한다(0012 마이그레이션). paypal_subscription_id로 유저를 찾는다.
  */

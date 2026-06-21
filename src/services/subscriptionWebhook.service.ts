@@ -11,11 +11,21 @@
 // 그 외 이벤트(CREATED/UPDATED 등)는 무시한다.
 
 import { logger } from '../utils/logger';
+import { logAnalyticsEvent } from './subscription.service';
 import type {
   SubscriptionEvent,
   SubscriptionPlan,
   ApplyEventResult,
 } from './subscription.service';
+
+// 내부 구독 이벤트 → 애널리틱스 events.event_name (이벤트로그 요청서 §3).
+// refunded는 refund webhook 미구현으로 이번엔 제외(회신서 명시).
+const ANALYTICS_EVENT_NAME: Partial<Record<SubscriptionEvent, string>> = {
+  ACTIVATED: 'subscription_activated',
+  RENEWED: 'subscription_renewed',
+  PAYMENT_FAILED: 'subscription_payment_failed',
+  CANCELED: 'subscription_cancelled',
+};
 
 interface PayPalWebhookEvent {
   event_type?: string;
@@ -97,4 +107,20 @@ export async function handleWebhookEvent(
   logger.info(
     `구독 이벤트 적용 OK — event=${internalEvent}, subId=${subId}, userId=${result.userId}, tier=${result.tier}`,
   );
+
+  // 애널리틱스 적재 — 결제 본 로직 성공 후 fire-and-forget(요청서 §3.2).
+  // logAnalyticsEvent는 throw하지 않으므로 await해도 webhook 처리를 막지 않는다.
+  const analyticsName = ANALYTICS_EVENT_NAME[internalEvent];
+  if (analyticsName) {
+    await logAnalyticsEvent({
+      eventName: analyticsName,
+      userId: result.userId,
+      // 적용 후 tier가 분석축. ACTIVATED/RENEWED→premium, PAYMENT_FAILED/CANCELED→free.
+      membershipStatus: result.tier,
+      properties: {
+        subscription_id: subId,
+        paypal_event_type: eventType,
+      },
+    });
+  }
 }
