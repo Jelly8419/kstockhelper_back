@@ -519,6 +519,7 @@ export interface AdminJwtPayload {
 /** GET /internal/admin/analytics/dau — analytics_dau 뷰 */
 export interface AnalyticsDauRow {
   day: string;
+  uniqueVisitors: number; // properties.anon_id 기준 순 방문자(guest 포함)
   loggedInUsers: number;
   totalEvents: number;
 }
