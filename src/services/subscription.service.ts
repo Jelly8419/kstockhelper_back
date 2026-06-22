@@ -80,7 +80,12 @@ export async function markCanceling(userId: string): Promise<boolean> {
   return (data?.length ?? 0) > 0;
 }
 
-export type SubscriptionEvent = 'ACTIVATED' | 'RENEWED' | 'PAYMENT_FAILED' | 'CANCELED';
+export type SubscriptionEvent =
+  | 'ACTIVATED'
+  | 'RENEWED'
+  | 'PAYMENT_FAILED'
+  | 'CANCELED'
+  | 'REFUNDED';
 
 export interface ApplyEventResult {
   ok: boolean;
