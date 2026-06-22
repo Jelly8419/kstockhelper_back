@@ -557,6 +557,25 @@ export interface AnalyticsEventCountResponse {
   rows: AnalyticsEventCountRow[];
 }
 
+/** GET /internal/admin/analytics/raw — events 원본 행(영역 탭 표/CSV용) */
+export interface AnalyticsRawRow {
+  createdAt: string;
+  eventName: string;
+  userId: string | null;
+  countryCode: string | null;
+  countryGroup: string | null;
+  membershipStatus: string | null;
+  pagePath: string | null; // events.page_path (요청서 예시의 devicePath는 오타)
+  deviceType: string | null;
+  properties: Record<string, unknown>; // jsonb 통째
+}
+export interface AnalyticsRawResponse {
+  rows: AnalyticsRawRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 // ===== 프리미엄 회원 신청 관리 =====
 
 /** 신청 건 상태 (applications.status, PRD 4.2) */

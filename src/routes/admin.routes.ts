@@ -27,6 +27,7 @@ import {
   getFunnelDaily,
   getFunnelTotal,
   getEventCounts,
+  getRawEvents,
 } from '../services/analytics.service';
 import { logger } from '../utils/logger';
 import type {
@@ -45,6 +46,22 @@ import type {
   AnalyticsFunnelTotalResponse,
   AnalyticsEventCountResponse,
 } from '../types';
+
+/** 콤마구분 eventNames 쿼리를 배열로. 빈 값/공백 제거. */
+function parseEventNames(v: unknown): string[] | undefined {
+  if (typeof v !== 'string' || !v.trim()) return undefined;
+  return v
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/** 정수 쿼리 파싱(실패 시 undefined). */
+function parseIntQuery(v: unknown): number | undefined {
+  if (typeof v !== 'string' || !v.trim()) return undefined;
+  const n = Number(v);
+  return Number.isInteger(n) ? n : undefined;
+}
 
 /** 쿼리에서 from/to(YYYY-MM-DD) 추출. 문자열 아닌 값은 undefined로. */
 function parseRange(query: Record<string, unknown>): { from?: string; to?: string } {
@@ -563,6 +580,32 @@ adminRouter.get('/analytics/events', async (req, res) => {
     return res.status(500).json({
       success: false,
       message: '통계를 불러오지 못했습니다. 다시 시도해 주세요.',
+    } satisfies AdminSimpleResponse);
+  }
+});
+
+/**
+ * GET /internal/admin/analytics/raw
+ * events 원본 행을 영역별(eventNames)로 필터·페이지네이션해 반환. created_at DESC.
+ * 적재 시트(영역 탭 표 + CSV) 대체용. 기간 미지정 시 최근 7일, pageSize 기본 50/최대 200.
+ */
+adminRouter.get('/analytics/raw', async (req, res) => {
+  try {
+    const { from, to } = parseRange(req.query);
+    const result = await getRawEvents({
+      from,
+      to,
+      eventNames: parseEventNames(req.query.eventNames),
+      page: parseIntQuery(req.query.page),
+      pageSize: parseIntQuery(req.query.pageSize),
+    });
+    return res.status(200).json(result);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('analytics raw 조회 실패:', msg);
+    return res.status(500).json({
+      success: false,
+      message: '로그를 불러오지 못했습니다. 다시 시도해 주세요.',
     } satisfies AdminSimpleResponse);
   }
 });

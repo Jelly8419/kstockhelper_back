@@ -13,6 +13,8 @@ import type {
   AnalyticsFunnelRow,
   AnalyticsFunnelTotal,
   AnalyticsEventCountRow,
+  AnalyticsRawRow,
+  AnalyticsRawResponse,
 } from '../types';
 
 /** 날짜 범위 옵션. 미지정 시 호출부에서 최근 30일로 기본 적용. */
@@ -21,7 +23,12 @@ export interface DateRange {
   to?: string; // 'YYYY-MM-DD' (해당 일자 끝까지 포함)
 }
 
-const DEFAULT_RANGE_DAYS = 30;
+const DEFAULT_RANGE_DAYS = 30; // 집계 API 기본 범위
+const DEFAULT_RAW_RANGE_DAYS = 7; // raw 조회는 데이터가 많아 좁게(요청서 §4)
+
+// raw 페이지네이션(요청서 §2)
+const DEFAULT_PAGE_SIZE = 50;
+const MAX_PAGE_SIZE = 200;
 
 /** 'YYYY-MM-DD' 형식 여부(느슨한 검증). 형식 불일치 값은 무시한다. */
 function isYmd(v: string | undefined): v is string {
@@ -34,7 +41,10 @@ function isYmd(v: string | undefined): v is string {
  * - to:   해당 날짜 +1일 00:00 UTC 미만 (그 날 23:59:59까지 포함)
  * 둘 다 미지정이면 from은 오늘-30일, to는 없음(현재까지).
  */
-function resolveBounds(range: DateRange): { gte: string; lt?: string } {
+function resolveBounds(
+  range: DateRange,
+  defaultDays = DEFAULT_RANGE_DAYS,
+): { gte: string; lt?: string } {
   const from = isYmd(range.from) ? range.from : undefined;
   const to = isYmd(range.to) ? range.to : undefined;
 
@@ -42,9 +52,9 @@ function resolveBounds(range: DateRange): { gte: string; lt?: string } {
   if (from) {
     gteDate = from;
   } else {
-    // 기본: 최근 30일. Date.now() 사용 불가 환경 대비 없이 서버 런타임 시각 사용.
+    // 기본: 최근 defaultDays일. Date.now() 사용 불가 환경 대비 없이 서버 런타임 시각 사용.
     const d = new Date();
-    d.setUTCDate(d.getUTCDate() - DEFAULT_RANGE_DAYS);
+    d.setUTCDate(d.getUTCDate() - defaultDays);
     gteDate = d.toISOString().slice(0, 10);
   }
 
@@ -168,4 +178,61 @@ export async function getEventCounts(
     eventName: String(r.event_name),
     count: Number(r.cnt ?? 0),
   }));
+}
+
+export interface RawQuery extends DateRange {
+  eventNames?: string[]; // 영역 탭 필터(요청서 §3). 비면 전체.
+  page?: number; // 0-base
+  pageSize?: number;
+}
+
+const RAW_COLS =
+  'created_at, event_name, user_id, country_code, country_group, membership_status, page_path, device_type, properties';
+
+/**
+ * events 원본 행을 최신순으로 필터·페이지네이션해 반환한다(요청서 §2, RAW 조회).
+ * - 기간 미지정 시 최근 7일(raw는 데이터가 많아 좁게).
+ * - total은 정확한 count(count:'exact') — 페이지네이션 UI용.
+ * - properties는 jsonb 통째로(프론트가 영역별 키 추출).
+ */
+export async function getRawEvents(input: RawQuery): Promise<AnalyticsRawResponse> {
+  const page = Number.isInteger(input.page) && input.page! >= 0 ? input.page! : 0;
+  const rawSize = Number.isFinite(input.pageSize) ? Number(input.pageSize) : DEFAULT_PAGE_SIZE;
+  const pageSize = Math.min(Math.max(1, rawSize), MAX_PAGE_SIZE);
+
+  const { gte, lt } = resolveBounds(input, DEFAULT_RAW_RANGE_DAYS);
+
+  let query = supabase
+    .from('events')
+    .select(RAW_COLS, { count: 'exact' })
+    .gte('created_at', gte);
+  if (lt) query = query.lt('created_at', lt);
+
+  const names = (input.eventNames ?? []).map((n) => n.trim()).filter(Boolean);
+  if (names.length > 0) query = query.in('event_name', names);
+
+  const fromIdx = page * pageSize;
+  const toIdx = fromIdx + pageSize - 1;
+  const { data, error, count } = await query
+    .order('created_at', { ascending: false })
+    .range(fromIdx, toIdx);
+
+  if (error) {
+    logger.error('events raw 조회 실패:', error.message);
+    throw error;
+  }
+
+  const rows: AnalyticsRawRow[] = (data ?? []).map((r: Record<string, unknown>) => ({
+    createdAt: String(r.created_at),
+    eventName: String(r.event_name),
+    userId: (r.user_id as string | null) ?? null,
+    countryCode: (r.country_code as string | null) ?? null,
+    countryGroup: (r.country_group as string | null) ?? null,
+    membershipStatus: (r.membership_status as string | null) ?? null,
+    pagePath: (r.page_path as string | null) ?? null,
+    deviceType: (r.device_type as string | null) ?? null,
+    properties: (r.properties as Record<string, unknown>) ?? {},
+  }));
+
+  return { rows, total: count ?? 0, page, pageSize };
 }
