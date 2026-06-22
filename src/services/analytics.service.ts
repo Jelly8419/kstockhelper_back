@@ -70,7 +70,7 @@ function applyRange(query: any, range: DateRange) {
 /** 일별 활성 유저 / 이벤트량 (analytics_dau). */
 export async function getDau(range: DateRange): Promise<AnalyticsDauRow[]> {
   const { data, error } = await applyRange(
-    supabase.from('analytics_dau').select('day, logged_in_users, total_events'),
+    supabase.from('analytics_dau').select('day, unique_visitors, logged_in_users, total_events'),
     range,
   ).order('day', { ascending: false });
 
@@ -81,6 +81,7 @@ export async function getDau(range: DateRange): Promise<AnalyticsDauRow[]> {
 
   return (data ?? []).map((r: Record<string, unknown>) => ({
     day: String(r.day),
+    uniqueVisitors: Number(r.unique_visitors ?? 0),
     loggedInUsers: Number(r.logged_in_users ?? 0),
     totalEvents: Number(r.total_events ?? 0),
   }));
