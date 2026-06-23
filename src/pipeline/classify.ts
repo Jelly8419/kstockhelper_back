@@ -22,9 +22,19 @@ Important:
 
 Publish only if the article contains a new fact that may help investors understand the company's business, earnings, risks, supply chain, regulation, production, customers, shareholder return, or major industry context.
 
+CRITICAL — primary subject test:
+The company must be the PRIMARY SUBJECT of the article, not just mentioned.
+If the company (or KOSPI / chip industry / earnings) appears only as an EXAMPLE,
+backdrop, or supporting evidence for a different main topic — such as politics,
+government policy, social commentary, inequality, opinion columns, or human-interest
+stories — choose "skip", even when the company name, tickers, or strong numbers
+(record earnings, KOSPI levels) appear many times in the body.
+Ask: "Is this article ABOUT the company's business, or is the company just used to
+illustrate someone else's story?" If the latter, skip.
+
 Publishable categories: EARNINGS, CONTRACT, CUSTOMER, CAPEX, PRODUCTION, SHAREHOLDER_RETURN, M&A, REGULATION, LEGAL_RISK, PRODUCT_TECH, MACRO_DIRECT, SUPPLY_CHAIN, ANALYST_VIEW_WITH_REASON
 
-Do not publish if mainly about: simple stock price movement, featured stock, analyst target only, market wrap, fund flow only, event/promotion, CSR, hiring, labor noise, community reaction, duplicate, too short, irrelevant
+Do not publish if mainly about: simple stock price movement, featured stock, analyst target only, market wrap, fund flow only, event/promotion, CSR, hiring, labor noise, community reaction, duplicate, too short, irrelevant, politics / elections / government approval ratings, opinion / political column, social commentary or inequality where the company is only an example
 
 Return JSON only:
 {
