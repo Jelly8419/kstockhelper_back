@@ -37,6 +37,39 @@ export const apiRateLimiter = rateLimit({
 });
 
 /**
+ * Price Gap basic 폴링 제한 — 비회원(무인증) 공개 트래픽 대비.
+ *
+ * /price-gap/{latest,chart}는 인증 없이 tier=basic으로 열려 있어 공개 트래픽이 발생한다.
+ * 전역 apiRateLimiter(120/min 통합) 위에 경로별 분리 한도를 둬, 한쪽 경로의 폭주가
+ * 다른 경로 예산을 잠식하지 않게 한다. 프론트 폴링은 latest 12/min·chart 3/min(단일 탭)이라
+ * 멀티탭·공유 IP 여유를 포함해 latest 60/min·chart 20/min으로 둔다.
+ * premium 트래픽도 같은 IP 키로 묶이지만 한도가 충분히 커 정상 사용엔 영향 없다.
+ */
+function priceGapLimiter(limit: number, label: string) {
+  return rateLimit({
+    windowMs: 60 * 1000,
+    limit,
+    standardHeaders: 'draft-7', // 429에 RateLimit-* 및 Retry-After 포함
+    legacyHeaders: false,
+    keyGenerator: keyByIp,
+    handler: (req: Request, res: Response) => {
+      logger.warn(`price-gap ${label} rate limit 초과 — ip=${req.ip}`);
+      res.status(429).json({
+        success: false,
+        code: 'RATE_LIMITED',
+        message: 'Too many requests. Please try again later.',
+      });
+    },
+  });
+}
+
+/** /price-gap/latest 전용 — IP당 분당 60회 (단일 탭 12회 기준 여유). */
+export const priceGapLatestRateLimiter = priceGapLimiter(60, 'latest');
+
+/** /price-gap/chart 전용 — IP당 분당 20회 (단일 탭 3회 기준 여유). */
+export const priceGapChartRateLimiter = priceGapLimiter(20, 'chart');
+
+/**
  * 관리자 로그인 브루트포스 방어. IP당 15분에 10회.
  * 성공한 로그인은 카운트에서 제외(skipSuccessfulRequests)해 정상 사용자 영향 최소화.
  */
