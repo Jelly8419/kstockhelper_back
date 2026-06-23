@@ -16,6 +16,7 @@ import { isPriceGapRunning } from '../priceGap/lifecycle';
 import { getOhlc, getPastAvgByMinute, getAvgSeries, closingRowsFromOhlc, latestOhlcTs } from '../services/priceGap.service';
 import { isPriceGapActive } from '../priceGap/holiday';
 import { perpSymbolOf, EXCHANGES } from '../priceGap/symbols';
+import { priceGapLatestRateLimiter, priceGapChartRateLimiter } from '../middleware/rateLimit';
 import { env } from '../config/env';
 import { logger } from '../utils/logger';
 import type { GapExchange, GapLatestRow, GapChartCandle, GapSnapshotRow } from '../types';
@@ -86,7 +87,7 @@ function sessionRangeOf(ms: number): { fromIso: string; toIso: string } {
 }
 
 // ── GET /latest ───────────────────────────────────────────────────────────────
-priceGapRouter.get('/latest', async (req, res) => {
+priceGapRouter.get('/latest', priceGapLatestRateLimiter, async (req, res) => {
   try {
     const premium = isPremium(req.query.tier);
     const now = Date.now();
@@ -161,8 +162,17 @@ priceGapRouter.get('/latest', async (req, res) => {
   }
 });
 
+// ── /chart basic 응답 캐시 ────────────────────────────────────────────────────
+// 비회원 유입으로 동일 (exchange:stock:period) basic 차트 요청이 몰릴 수 있다. 10분 지연
+// 데이터라 십수 초 캐싱은 신선도에 영향이 없다. premium은 캐시하지 않는다(실시간 보장).
+// 키에 period를 포함해 평균선 선택이 섞이지 않게 한다. now-기반 컷(toIso)은 캐시 윈도
+// 내에서 분 단위로 사실상 고정이라 무방하다.
+interface ChartCacheEntry { at: number; body: unknown }
+const chartCache = new Map<string, ChartCacheEntry>();
+const CHART_CACHE_TTL_MS = 15_000; // 10~20초 권장 범위 내
+
 // ── GET /chart ────────────────────────────────────────────────────────────────
-priceGapRouter.get('/chart', async (req, res) => {
+priceGapRouter.get('/chart', priceGapChartRateLimiter, async (req, res) => {
   const exchange = String(req.query.exchange ?? '') as GapExchange;
   const stock = String(req.query.stock ?? '');
 
@@ -188,6 +198,16 @@ priceGapRouter.get('/chart', async (req, res) => {
   try {
     const premium = isPremium(req.query.tier);
     const now = Date.now();
+
+    // basic은 짧게 캐싱(비회원 유입 시 동일 요청 급증 대비). premium은 캐시 미사용.
+    const cacheKey = `${exchange}:${stock}:${period}`;
+    if (!premium) {
+      const cached = chartCache.get(cacheKey);
+      if (cached && now - cached.at < CHART_CACHE_TTL_MS) {
+        return res.status(200).json(cached.body);
+      }
+    }
+
     // 마지막 거래일 캔들 범위(주말/휴장일 대응): 최신 분봉이 속한 거래일 세션을 X축으로.
     // 데이터가 전혀 없으면 오늘 세션으로 폴백.
     const latestTs = await latestOhlcTs(stock, exchange).catch(() => null);
@@ -225,7 +245,7 @@ priceGapRouter.get('/chart', async (req, res) => {
       };
     });
 
-    return res.status(200).json({
+    const body = {
       success: true,
       code: 'PRICE_GAP_CHART',
       data: {
@@ -235,7 +255,11 @@ priceGapRouter.get('/chart', async (req, res) => {
         period,
         candles,
       },
-    });
+    };
+
+    if (!premium) chartCache.set(cacheKey, { at: now, body });
+
+    return res.status(200).json(body);
   } catch (err) {
     logger.error('price-gap/chart 실패:', err instanceof Error ? err.message : String(err));
     return res.status(500).json({
