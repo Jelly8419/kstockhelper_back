@@ -16,7 +16,6 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.100.1",
     "@supabase/supabase-js": "^2.45.0",
     "adm-zip": "^0.5.17",
     "axios": "^1.7.0",
@@ -29,6 +28,7 @@
     "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.3",
     "node-cron": "^3.0.3",
+    "openai": "^6.44.0",
     "ws": "^8.21.0"
   },
   "devDependencies": {

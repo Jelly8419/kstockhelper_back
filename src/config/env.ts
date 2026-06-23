@@ -33,7 +33,8 @@ export const env = {
   dartApiKey: required('DART_API_KEY'),
   naverClientId: required('NAVER_CLIENT_ID'),
   naverClientSecret: required('NAVER_CLIENT_SECRET'),
-  anthropicApiKey: required('ANTHROPIC_API_KEY'),
+  /** LLM API 키. 뉴스/공시 분류·번역·요약 파이프라인이 OpenAI(Chat Completions)를 호출한다. */
+  openaiApiKey: required('OPENAI_API_KEY'),
   /** 한국투자증권(KIS) OpenAPI 앱키/시크릿 (주식/지수 현재가 시세) */
   kisAppKey: required('KIS_APP_KEY'),
   kisAppSecret: required('KIS_APP_SECRET'),
