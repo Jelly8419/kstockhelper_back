@@ -20,7 +20,30 @@ Important:
 - Do not judge based on the title alone.
 - If uncertain, choose "skip" for MVP.
 
-Publish only if the article contains a new fact that may help investors understand the company's business, earnings, risks, supply chain, regulation, production, customers, shareholder return, or major industry context.
+Be STRICT. The bar for publishing is HIGH — only genuinely market-moving news.
+We publish a small number of high-value briefs per day, not every related article.
+When in doubt, choose "skip".
+
+Publish ONLY if BOTH hold:
+1. The company is the primary subject (see test below), AND
+2. The article reports a MATERIAL, specific, verifiable NEW fact that could
+   plausibly move the stock or change how investors value the business — e.g.
+   a confirmed earnings figure, a signed contract with scale, a concrete capex
+   or M&A decision, a guidance change, a regulatory action, a shareholder-return
+   decision, or a confirmed major customer/supply event.
+
+NOT material enough to publish (skip these even if on-topic and factually new):
+- Incremental, routine, or already-known developments.
+- Rumors, speculation, "expected to", "could", "reportedly considering".
+- Analyst opinions/targets without a concrete new catalyst or reasoning.
+- General industry/macro color that does not pin a specific impact on THIS company.
+- Minor product/PR/marketing items with no financial weight.
+
+confidence must reflect MATERIALITY, not topical relevance:
+- 90-100: clearly market-moving, confirmed, specific (e.g. official earnings, signed deal).
+- 80-89: material and concrete but secondary in impact.
+- below 80: relevant but not clearly material → this maps to "skip".
+Do not default to the mid-80s; spread the score by how material the fact actually is.
 
 CRITICAL — primary subject test:
 The company must be the PRIMARY SUBJECT of the article, not just mentioned.
