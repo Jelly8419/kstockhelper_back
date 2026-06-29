@@ -698,3 +698,65 @@ export interface HotNewsCreateResponse {
 export interface HotNewsListResponse {
   items: HotNewsListItem[];
 }
+
+// ── 부동산 구매 지원 요청 폼 (리드 수집) ─────────────────────────────────────
+
+/** 통화 9종(폼 옵션). DB CHECK(rer_currency_valid)와 일치. */
+export const REAL_ESTATE_CURRENCIES = [
+  'USD',
+  'CNY',
+  'CAD',
+  'TWD',
+  'AUD',
+  'JPY',
+  'VND',
+  'NZD',
+  'KRW',
+] as const;
+export type RealEstateCurrency = (typeof REAL_ESTATE_CURRENCIES)[number];
+
+/** 부동산 유형 4종(폼 옵션). DB CHECK(rer_property_type_valid)와 일치. */
+export const REAL_ESTATE_PROPERTY_TYPES = [
+  'apartment',
+  'officetel',
+  'other',
+  'not_sure',
+] as const;
+export type RealEstatePropertyType = (typeof REAL_ESTATE_PROPERTY_TYPES)[number];
+
+/**
+ * POST /api/real-estate/requests 요청 body.
+ * 호출자는 프론트 BFF(Vercel). userId/countryCode는 BFF가 서버에서 채워 전달한다
+ * (브라우저 입력 신뢰 안 함). honeypot은 1차 봇 방어용(값 있으면 조용히 성공 처리).
+ */
+export interface RealEstateRequestInput {
+  email: string;
+  countryOfResidence: string;
+  budgetCurrency: string;
+  budgetMin: number;
+  budgetMax: number;
+  propertyType: string;
+  currentlyInKorea: boolean;
+  message: string;
+  userId?: string | null;
+  locale?: string | null;
+  /** BFF가 edge geo로 판별해 전달하는 ISO alpha-2. 없으면 백엔드 geoip 폴백. */
+  countryCode?: string | null;
+  /** 1차 봇 방어 허니팟. 정상 사용자는 빈 값. */
+  honeypot?: string | null;
+}
+
+/** real_estate_requests insert용 정규화된 row(서버 내부). */
+export interface RealEstateRequestRow {
+  email: string;
+  country_of_residence: string;
+  budget_currency: string;
+  budget_min: number;
+  budget_max: number;
+  property_type: string;
+  currently_in_korea: boolean;
+  message: string;
+  user_id: string | null;
+  locale: string | null;
+  country_code: string | null;
+}

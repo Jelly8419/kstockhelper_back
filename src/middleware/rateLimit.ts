@@ -70,6 +70,30 @@ export const priceGapLatestRateLimiter = priceGapLimiter(60, 'latest');
 export const priceGapChartRateLimiter = priceGapLimiter(20, 'chart');
 
 /**
+ * 부동산 구매 지원 요청 폼 제출 전용 — IP당 분당 5회 (2차 스팸/봇 방어).
+ * 폼 제출은 사람 기준 빈도가 매우 낮으므로 빡빡하게 둔다(price-gap보다 훨씬 낮음).
+ * 1차(프론트 허니팟·버튼 중복방지)와 함께 동작하며, 초과 시 429 RATE_LIMITED.
+ *
+ * 주의: 호출자는 프론트 BFF(Vercel)이므로 keyByIp가 trust proxy로 해석한 req.ip는
+ * BFF가 전달한 X-Forwarded-For의 최종 클라이언트 IP다(app.ts trust proxy=1 전제).
+ */
+export const realEstateRequestRateLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 5,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: keyByIp,
+  handler: (req: Request, res: Response) => {
+    logger.warn(`real-estate request rate limit 초과 — ip=${req.ip}`);
+    res.status(429).json({
+      success: false,
+      code: 'RATE_LIMITED',
+      message: 'Too many requests. Please try again later.',
+    });
+  },
+});
+
+/**
  * 관리자 로그인 브루트포스 방어. IP당 15분에 10회.
  * 성공한 로그인은 카운트에서 제외(skipSuccessfulRequests)해 정상 사용자 영향 최소화.
  */
