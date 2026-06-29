@@ -14,6 +14,7 @@ import { newsRouter } from './routes/news.routes';
 import { priceGapRouter } from './routes/priceGap.routes';
 import { featureFlagsRouter } from './routes/featureFlags.routes';
 import { subscriptionRouter } from './routes/subscription.routes';
+import { realEstateRouter } from './routes/realEstate.routes';
 
 export function createApp() {
   const app = express();
@@ -62,6 +63,7 @@ export function createApp() {
   app.use('/api/news', newsRouter);
   app.use('/api/price-gap', priceGapRouter);
   app.use('/api/feature-flags', featureFlagsRouter);
+  app.use('/api/real-estate', realEstateRouter);
   if (env.enableSubscription) {
     assertSubscriptionEnv(); // PayPal 필수 env 누락 시 기동 차단
     app.use('/api/subscription', subscriptionRouter);
