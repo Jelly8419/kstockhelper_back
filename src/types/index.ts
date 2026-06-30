@@ -760,3 +760,43 @@ export interface RealEstateRequestRow {
   locale: string | null;
   country_code: string | null;
 }
+
+// ── 부동산 구매 요청 어드미 관리 (PRD: Admin - 부동산 구매 요청 관리) ──────────
+
+/** 요청 처리 상태(DB 영문). UI 라벨은 프론트가 매핑(RECEIVED='접수', ANSWERED='답변완료'). */
+export const REAL_ESTATE_STATUSES = ['RECEIVED', 'ANSWERED'] as const;
+export type RealEstateStatus = (typeof REAL_ESTATE_STATUSES)[number];
+
+/** 어드미 리스트 아이템(PRD 4 — 요청일·거주국가·이메일·체류여부·상태). */
+export interface RealEstateRequestListItem {
+  id: string;
+  createdAt: string;
+  countryOfResidence: string;
+  email: string;
+  currentlyInKorea: boolean;
+  status: RealEstateStatus;
+}
+
+export interface RealEstateRequestListResponse {
+  items: RealEstateRequestListItem[];
+}
+
+/** 어드미 상세(PRD 7.2 — 전체 입력값 + 예산범위 + 메시지 + 관리자 메모). */
+export interface RealEstateRequestDetail {
+  id: string;
+  createdAt: string;
+  email: string;
+  countryOfResidence: string;
+  budgetCurrency: string;
+  budgetMin: number;
+  budgetMax: number;
+  propertyType: string;
+  currentlyInKorea: boolean;
+  message: string;
+  status: RealEstateStatus;
+  adminMemo: string | null;
+  /** 부가 메타(있으면) */
+  userId: string | null;
+  locale: string | null;
+  countryCode: string | null;
+}

@@ -10,8 +10,12 @@ import { logger } from '../utils/logger';
 import {
   REAL_ESTATE_CURRENCIES,
   REAL_ESTATE_PROPERTY_TYPES,
+  REAL_ESTATE_STATUSES,
   type RealEstateRequestInput,
   type RealEstateRequestRow,
+  type RealEstateRequestListItem,
+  type RealEstateRequestDetail,
+  type RealEstateStatus,
 } from '../types';
 
 const MAX_MESSAGE_LEN = 500;
@@ -127,4 +131,119 @@ export async function insertRealEstateRequest(row: RealEstateRequestRow): Promis
     throw error;
   }
   return String(data.id);
+}
+
+// ── 어드미 관리 (PRD: Admin - 부동산 구매 요청 관리) ──────────────────────────
+// 모두 service_role(RLS 우회)로 동작. /internal/admin 라우터(internalGuard) 뒤에서만 호출된다.
+
+/** 어드미 관리자 메모 최대 길이. users admin_memo(ADMIN_MEMO_MAX=1000)와 동일하게 둔다. */
+export const REAL_ESTATE_MEMO_MAX = 1000;
+
+const LIST_SELECT = 'id, created_at, country_of_residence, email, currently_in_korea, status';
+const DETAIL_SELECT =
+  'id, created_at, email, country_of_residence, budget_currency, budget_min, budget_max, ' +
+  'property_type, currently_in_korea, message, status, admin_memo, user_id, locale, country_code';
+
+/** status 문자열을 RealEstateStatus로 정규화(비표준값은 RECEIVED). */
+function normalizeStatus(s: unknown): RealEstateStatus {
+  return s === 'ANSWERED' ? 'ANSWERED' : 'RECEIVED';
+}
+
+/** 어드미 리스트 — 요청일 최신순(PRD 5). */
+export async function listRequests(): Promise<RealEstateRequestListItem[]> {
+  const { data, error } = await supabase
+    .from('real_estate_requests')
+    .select(LIST_SELECT)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    logger.error('real_estate_requests 리스트 조회 실패:', error.message);
+    throw error;
+  }
+
+  return (data ?? []).map((r: Record<string, unknown>) => ({
+    id: String(r.id),
+    createdAt: String(r.created_at),
+    countryOfResidence: String(r.country_of_residence ?? ''),
+    email: String(r.email ?? ''),
+    currentlyInKorea: Boolean(r.currently_in_korea),
+    status: normalizeStatus(r.status),
+  }));
+}
+
+/** 어드미 상세 — 전체 입력값 + 메모(PRD 7.2). 미존재 시 null. */
+export async function getRequestDetail(id: string): Promise<RealEstateRequestDetail | null> {
+  const { data, error } = await supabase
+    .from('real_estate_requests')
+    .select(DETAIL_SELECT)
+    .eq('id', id)
+    .limit(1);
+
+  if (error) {
+    logger.error('real_estate_requests 상세 조회 실패:', error.message);
+    throw error;
+  }
+
+  const r = data?.[0] as unknown as Record<string, unknown> | undefined;
+  if (!r) return null;
+
+  return {
+    id: String(r.id),
+    createdAt: String(r.created_at),
+    email: String(r.email ?? ''),
+    countryOfResidence: String(r.country_of_residence ?? ''),
+    budgetCurrency: String(r.budget_currency ?? ''),
+    budgetMin: Number(r.budget_min ?? 0),
+    budgetMax: Number(r.budget_max ?? 0),
+    propertyType: String(r.property_type ?? ''),
+    currentlyInKorea: Boolean(r.currently_in_korea),
+    message: String(r.message ?? ''),
+    status: normalizeStatus(r.status),
+    adminMemo: r.admin_memo == null ? null : String(r.admin_memo),
+    userId: r.user_id == null ? null : String(r.user_id),
+    locale: r.locale == null ? null : String(r.locale),
+    countryCode: r.country_code == null ? null : String(r.country_code),
+  };
+}
+
+export type AdminUpdateResult = { ok: true } | { ok: false; reason: 'not_found' };
+
+/** status 값이 허용 집합(RECEIVED/ANSWERED)인지. */
+export function isValidStatus(s: unknown): s is RealEstateStatus {
+  return typeof s === 'string' && (REAL_ESTATE_STATUSES as readonly string[]).includes(s);
+}
+
+/** 상태 변경(PRD 8.1). 미존재 시 not_found. */
+export async function changeStatus(
+  id: string,
+  status: RealEstateStatus,
+): Promise<AdminUpdateResult> {
+  const { data, error } = await supabase
+    .from('real_estate_requests')
+    .update({ status })
+    .eq('id', id)
+    .select('id');
+
+  if (error) {
+    logger.error('real_estate_requests 상태 변경 실패:', error.message);
+    throw error;
+  }
+  if (!data || data.length === 0) return { ok: false, reason: 'not_found' };
+  return { ok: true };
+}
+
+/** 관리자 메모 저장(PRD 8.2, 단일 필드 덮어쓰기). 미존재 시 not_found. */
+export async function saveAdminMemo(id: string, memo: string): Promise<AdminUpdateResult> {
+  const { data, error } = await supabase
+    .from('real_estate_requests')
+    .update({ admin_memo: memo })
+    .eq('id', id)
+    .select('id');
+
+  if (error) {
+    logger.error('real_estate_requests 메모 저장 실패:', error.message);
+    throw error;
+  }
+  if (!data || data.length === 0) return { ok: false, reason: 'not_found' };
+  return { ok: true };
 }
