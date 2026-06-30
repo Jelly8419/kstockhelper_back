@@ -23,6 +23,14 @@ import {
 } from '../services/hotNews.service';
 import { getAllFlags, setFlag, isKnownFlagKey } from '../services/featureFlags.service';
 import {
+  listRequests as listRealEstateRequests,
+  getRequestDetail as getRealEstateRequestDetail,
+  changeStatus as changeRealEstateStatus,
+  saveAdminMemo as saveRealEstateMemo,
+  isValidStatus as isValidRealEstateStatus,
+  REAL_ESTATE_MEMO_MAX,
+} from '../services/realEstate.service';
+import {
   getDau,
   getFunnelDaily,
   getFunnelTotal,
@@ -45,6 +53,7 @@ import type {
   AnalyticsFunnelResponse,
   AnalyticsFunnelTotalResponse,
   AnalyticsEventCountResponse,
+  RealEstateRequestListResponse,
 } from '../types';
 
 /** 콤마구분 eventNames 쿼리를 배열로. 빈 값/공백 제거. */
@@ -233,6 +242,133 @@ adminRouter.patch('/users/:userId/memo', async (req, res) => {
     return res.status(500).json({
       success: false,
       message: '관리자 메모를 저장하지 못했습니다. 다시 시도해 주세요.',
+    } satisfies AdminSimpleResponse);
+  }
+});
+
+// ===== 부동산 구매 요청 관리 (PRD: Admin - 부동산 구매 요청 관리) =====
+
+/**
+ * GET /internal/admin/real-estate-requests
+ * 부동산 구매 요청 리스트 (요청일 최신순). PRD 4·5.
+ */
+adminRouter.get('/real-estate-requests', async (_req, res) => {
+  try {
+    const items = await listRealEstateRequests();
+    return res.status(200).json({ items } satisfies RealEstateRequestListResponse);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('부동산 요청 리스트 조회 실패:', msg);
+    return res.status(500).json({
+      success: false,
+      message: '부동산 구매 요청 목록을 불러오지 못했습니다. 다시 시도해 주세요.',
+    } satisfies AdminSimpleResponse);
+  }
+});
+
+/**
+ * GET /internal/admin/real-estate-requests/:id
+ * 부동산 구매 요청 상세 (전체 입력값 + 관리자 메모). PRD 7.
+ */
+adminRouter.get('/real-estate-requests/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const detail = await getRealEstateRequestDetail(id);
+    if (!detail) {
+      return res.status(404).json({
+        success: false,
+        message: '부동산 구매 요청을 찾을 수 없습니다.',
+      } satisfies AdminSimpleResponse);
+    }
+    return res.status(200).json(detail);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('부동산 요청 상세 조회 실패:', msg);
+    return res.status(500).json({
+      success: false,
+      message: '부동산 구매 요청을 불러오지 못했습니다. 다시 시도해 주세요.',
+    } satisfies AdminSimpleResponse);
+  }
+});
+
+/**
+ * PATCH /internal/admin/real-estate-requests/:id/status
+ * 요청: { status: 'RECEIVED' | 'ANSWERED' }
+ * 상태 변경(접수/답변완료). PRD 8.1.
+ */
+adminRouter.patch('/real-estate-requests/:id/status', async (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body ?? {};
+
+  if (!isValidRealEstateStatus(status)) {
+    return res.status(400).json({
+      success: false,
+      message: 'status는 RECEIVED 또는 ANSWERED여야 합니다.',
+    } satisfies AdminSimpleResponse);
+  }
+
+  try {
+    const result = await changeRealEstateStatus(id, status);
+    if (!result.ok) {
+      return res.status(404).json({
+        success: false,
+        message: '부동산 구매 요청을 찾을 수 없습니다.',
+      } satisfies AdminSimpleResponse);
+    }
+    return res.status(200).json({
+      success: true,
+      message: '상태가 저장되었습니다.',
+    } satisfies AdminSimpleResponse);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('부동산 요청 상태 변경 실패:', msg);
+    return res.status(500).json({
+      success: false,
+      message: '상태 저장에 실패했습니다. 다시 시도해주세요.',
+    } satisfies AdminSimpleResponse);
+  }
+});
+
+/**
+ * PATCH /internal/admin/real-estate-requests/:id/memo
+ * 요청: { memo: string } (최대 1,000자, 덮어쓰기)
+ * 관리자 메모 저장. PRD 8.2.
+ */
+adminRouter.patch('/real-estate-requests/:id/memo', async (req, res) => {
+  const { id } = req.params;
+  const { memo } = req.body ?? {};
+
+  if (typeof memo !== 'string') {
+    return res.status(400).json({
+      success: false,
+      message: 'memo는 문자열이어야 합니다.',
+    } satisfies AdminSimpleResponse);
+  }
+  if (memo.length > REAL_ESTATE_MEMO_MAX) {
+    return res.status(400).json({
+      success: false,
+      message: `메모는 최대 ${REAL_ESTATE_MEMO_MAX}자까지 가능합니다.`,
+    } satisfies AdminSimpleResponse);
+  }
+
+  try {
+    const result = await saveRealEstateMemo(id, memo);
+    if (!result.ok) {
+      return res.status(404).json({
+        success: false,
+        message: '부동산 구매 요청을 찾을 수 없습니다.',
+      } satisfies AdminSimpleResponse);
+    }
+    return res.status(200).json({
+      success: true,
+      message: '메모가 저장되었습니다.',
+    } satisfies AdminSimpleResponse);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error('부동산 요청 메모 저장 실패:', msg);
+    return res.status(500).json({
+      success: false,
+      message: '메모 저장에 실패했습니다. 다시 시도해주세요.',
     } satisfies AdminSimpleResponse);
   }
 });
